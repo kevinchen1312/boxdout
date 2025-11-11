@@ -1,15 +1,13 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
   --background: #ffffff;
   --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --cal-bw: 1px;
+  --cal-bc: #222;
+  --cal-bg: #fff;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -20,7 +18,101 @@
 }
 
 body {
-  background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--background);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Custom scrollbar styles */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+/* Animation for loading spinner */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Responsive calendar adjustments */
+@media (max-width: 768px) {
+  .calendar-cell {
+    min-height: 70px !important;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+  .calendar-cell {
+    min-height: 90px !important;
+  }
+}
+
+/* DATE HEADER — no borders at all */
+.date-header {
+  margin: 18px 0 8px;
+  padding: 0;
+  border: none !important;
+  background: var(--cal-bg);
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.date-header:first-child {
+  margin-top: 0;
+}
+
+.date-header .date-sub {
+  text-transform: none;
+  font-weight: 600;
+}
+
+/* DAY BOX — this is the only outer border for that day */
+.day-table {
+  border: var(--cal-bw) solid var(--cal-bc);
+  box-sizing: border-box;
+  background: var(--cal-bg);
+}
+
+/* GAME ROWS — stack flush, no gaps; only draw a TOP border on rows after the first */
+.game-row {
+  margin: 0;
+  padding: 12px 14px;
+  border: 0;
+  box-sizing: border-box;
+}
+
+.day-table .game-row + .game-row {
+  border-top: var(--cal-bw) solid var(--cal-bc);
+}
+
+/* Internal spacing for prospects */
+.game-row .prospects:last-child {
+  margin-bottom: 0;
+  padding-bottom: 6px;
 }
