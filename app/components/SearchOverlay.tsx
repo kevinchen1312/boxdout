@@ -3,65 +3,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { GameWithProspects } from '../utils/gameMatching';
-import { canonTeam, canonTeamInput, plain } from '../utils/normalize';
+import { buildTeamCatalog } from '@/lib/search/catalog';
+import { resolveTeams } from '@/lib/search/resolve';
+import { runProspectSearch } from '../search/runProspectSearch';
+import type { TeamItem } from '@/lib/search/tokens';
+import { plain } from '@/lib/search/tokens';
 
-type TeamEntry = { key: string; label: string; canon: string; type: 'team' };
 type ProspectEntry = { key: string; label: string; type: 'prospect' };
-type Entry = TeamEntry | ProspectEntry;
-
-const norm = (s: string) =>
-  (s || '').normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase().trim();
-
-// Split into words for whole-word checks (keeps letters/numbers only)
-const words = (s: string) => norm(s).replace(/[^a-z0-9]+/g, ' ').split(' ').filter(Boolean);
-
-// Scoring function for teams that prioritizes Kansas over Kansas State over Arkansas
-function scoreTeam(qRaw: string, label: string, canonKey: string): readonly number[] {
-  const q = norm(qRaw);
-  const L = norm(label);
-  const w = words(label);
-
-  const exact = Number(L === q);
-  const starts = Number(L.startsWith(q));
-  const whole = Number(w.includes(q));
-  const substr = Number(L.includes(q));
-  const len = -Math.abs(L.length - q.length);
-
-  // Anti-Arkansas penalty when searching "kansas"
-  const antiArk = (q === 'kansas' && /arkansas/.test(L)) ? -100 : 0;
-
-  // Direct boost if alias resolution matches "kansas"
-  const qCanon = canonTeamInput(qRaw);
-  const canonBoost = Number(qCanon === plain('Kansas') && canonKey === plain('Kansas'));
-
-  return [canonBoost, exact, starts, whole, substr, antiArk, len] as const;
-}
-
-// Scoring function for prospects
-function scoreProspect(qRaw: string, label: string): readonly number[] {
-  const q = norm(qRaw);
-  const L = norm(label);
-  const w = words(label);
-
-  const exact = Number(L === q);
-  const starts = Number(L.startsWith(q));
-  const wholeWord = Number(w.includes(q));
-  const substr = L.includes(q) ? 1 : 0;
-  const lenPenalty = -Math.abs(L.length - q.length);
-
-  return [exact, starts, wholeWord, substr, lenPenalty] as const;
-}
-
-// Scoring function that prioritizes whole-word matches
-function scoreEntry(qRaw: string, entry: Entry): readonly number[] {
-  if (entry.type === 'team') {
-    return scoreTeam(qRaw, entry.label, entry.canon);
-  } else {
-    const prospectScore = scoreProspect(qRaw, entry.label);
-    // Add type boost for teams (0 for prospects)
-    return [0, ...prospectScore] as const;
-  }
-}
+type Entry = TeamItem | ProspectEntry;
 
 export default function SearchOverlay({
   open,
@@ -81,9 +30,18 @@ export default function SearchOverlay({
   const [active, setActive] = useState(0);
 
   useEffect(() => {
-    const t = setTimeout(() => setDebounced(q), 150);
+    const t = setTimeout(() => setDebounced(q), 200);
     return () => clearTimeout(t);
   }, [q]);
+
+  useEffect(() => {
+    if (!open) {
+      // Reset query when closing
+      setQ('');
+      setDebounced('');
+      setActive(0);
+    }
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -105,122 +63,116 @@ export default function SearchOverlay({
     return flat;
   }, [gamesByDate]);
 
-  // Build team prospects index from games (extract teams that have prospects)
-  const teamProsIndex = useMemo(() => {
-    const map = new Map<string, Array<{ name: string; rank?: number; jersey?: string; team: string }>>();
-    
-    for (const g of allGames) {
+  // Transform games for catalog (with home/away/homeKey/awayKey)
+  const allGamesForCatalog = useMemo(() => {
+    return allGames.map(g => {
       const home = g.homeTeam.displayName || g.homeTeam.name || '';
       const away = g.awayTeam.displayName || g.awayTeam.name || '';
-      const homeKey = canonTeam(home);
-      const awayKey = canonTeam(away);
-      const homePros = g.homeProspects || [];
-      const awayPros = g.awayProspects || [];
-      
-      // Add home prospects
-      for (const hp of homePros) {
-        if (!map.has(homeKey)) map.set(homeKey, []);
-        const existing = map.get(homeKey)!;
-        if (!existing.some(ep => ep.name === hp.name)) {
-          existing.push({ name: hp.name, rank: hp.rank, jersey: hp.jersey, team: home });
-        }
-      }
-      
-      // Add away prospects
-      for (const ap of awayPros) {
-        if (!map.has(awayKey)) map.set(awayKey, []);
-        const existing = map.get(awayKey)!;
-        if (!existing.some(ep => ep.name === ap.name)) {
-          existing.push({ name: ap.name, rank: ap.rank, jersey: ap.jersey, team: away });
-        }
-      }
-    }
-    
-    return map;
+      return {
+        home,
+        away,
+        homeKey: plain(home),
+        awayKey: plain(away),
+      };
+    });
   }, [allGames]);
 
-  // Build index from ALL annotated data
-  const index: Entry[] = useMemo(() => {
-    if (!open) return [];
+  // Build team catalog once (memoized)
+  const catalog = useMemo(() => buildTeamCatalog(allGamesForCatalog), [allGamesForCatalog]);
 
-    const rows: Entry[] = [];
-    const teamSet = new Set<string>();
-    const teamLabelByCanon = new Map<string, string>();
-
-    // 1) teams from your canonical TEAM→Prospects map
-    for (const [canonKey, plist] of teamProsIndex.entries()) {
-      const label = plist?.[0]?.team ?? canonKey; // best label we have
-      teamSet.add(canonKey);
-      if (!teamLabelByCanon.has(canonKey)) teamLabelByCanon.set(canonKey, label);
-    }
-
-    // 2) teams from ALL games (not just the current week)
-    for (const g of allGames) {
-      const home = g.homeTeam.displayName || g.homeTeam.name || '';
-      const away = g.awayTeam.displayName || g.awayTeam.name || '';
-      const homeKey = canonTeam(home);
-      const awayKey = canonTeam(away);
-      
-      teamSet.add(homeKey);
-      teamSet.add(awayKey);
-      
-      if (!teamLabelByCanon.has(homeKey)) teamLabelByCanon.set(homeKey, home);
-      if (!teamLabelByCanon.has(awayKey)) teamLabelByCanon.set(awayKey, away);
-    }
-
-    // materialize team entries
-    for (const canonKey of teamSet) {
-      const label = teamLabelByCanon.get(canonKey) ?? canonKey;
-      rows.push({ key: `t:${canonKey}`, label, canon: canonKey, type: 'team' });
-    }
-
-    // prospects (optional, keep if you support prospect view)
-    const prospectNames = new Set<string>();
+  // Extract prospect names
+  const prospectNames = useMemo(() => {
+    const names = new Set<string>();
     for (const g of allGames) {
       for (const p of g.prospects || []) {
-        if (p.name) prospectNames.add(p.name);
+        if (p.name) names.add(p.name);
       }
     }
-    for (const name of prospectNames) {
-      rows.push({ key: `p:${name}`, label: name, type: 'prospect' });
+    return Array.from(names);
+  }, [allGames]);
+
+  // Resolve teams using deterministic resolver (no substring matching)
+  const teamResults = useMemo(() => resolveTeams(debounced, catalog), [debounced, catalog]);
+
+  // Run prospect search
+  const prospectResults = useMemo(
+    () => runProspectSearch(debounced, prospectNames),
+    [debounced, prospectNames]
+  );
+
+  // Combine results (teams first, then prospects)
+  const results: Entry[] = useMemo(() => {
+    const entries: Entry[] = [];
+
+    // Add team results
+    for (const team of teamResults) {
+      entries.push(team);
     }
 
-    return rows;
-  }, [open, allGames, teamProsIndex]);
+    // Add prospect results
+    for (const name of prospectResults) {
+      entries.push({
+        key: `p:${name}`,
+        label: name,
+        type: 'prospect',
+      } as ProspectEntry);
+    }
 
-  const results = useMemo(() => {
-    if (!debounced.trim()) return [];
+    return entries.slice(0, 30);
+  }, [teamResults, prospectResults]);
 
-    const scored = index
-      .map((e) => ({ e, s: scoreEntry(debounced, e) }))
-      .filter((x) => {
-        // For teams: check canonBoost, exact, starts, whole, substr (indices 0-4)
-        // For prospects: check exact, starts, wholeWord, substr (indices 1-4)
-        if (x.e.type === 'team') {
-          return x.s[0] || x.s[1] || x.s[2] || x.s[3] || x.s[4]; // any match
-        } else {
-          return x.s[1] || x.s[2] || x.s[3] || x.s[4]; // any match (skip canonBoost)
-        }
-      })
-      .sort((a, b) => {
-        // sort by tuple, descending
-        for (let i = 0; i < a.s.length; i++) {
-          const d = b.s[i] - a.s[i];
-          if (d) return d;
-        }
-        // tie-breaker: alphabetical
-        return a.e.label.localeCompare(b.e.label);
-      })
-      .slice(0, 30)
-      .map((x) => x.e);
+  function onConfirm(e?: React.KeyboardEvent | React.MouseEvent) {
+    e?.preventDefault?.();
 
-    return scored;
-  }, [debounced, index]);
+    // Use deterministic resolver for teams
+    const resolvedTeams = resolveTeams(q.trim(), catalog);
+
+    if (resolvedTeams.length === 1) {
+      // Single match - go directly
+      onPickTeam(resolvedTeams[0]);
+      return;
+    }
+
+    if (resolvedTeams.length > 1) {
+      // Multiple matches - use active selection or first
+      const selected = resolvedTeams[active] || resolvedTeams[0];
+      onPickTeam(selected);
+      return;
+    }
+
+    // No team match - try prospect or selected result
+    if (results[active] && 'type' in results[active] && results[active].type === 'prospect') {
+      onGoProspect(results[active].label);
+      onClose();
+      return;
+    }
+
+    // No result found - do nothing (don't reuse stale state)
+  }
+
+  function onPickTeam(team: TeamItem) {
+    // Clear stale state first
+    onGoTeam(team.label);
+    onClose();
+  }
+
+  function choose(entry: Entry) {
+    if ('type' in entry && entry.type === 'prospect') {
+      onGoProspect(entry.label);
+    } else {
+      // It's a TeamItem
+      onPickTeam(entry as TeamItem);
+    }
+  }
 
   if (!open) return null;
 
   // Only render portal on client
   if (typeof window === 'undefined') return null;
+
+  const hasTeamResults = teamResults.length > 0;
+  const showDisambiguation = debounced.trim() && teamResults.length > 1;
+  const showNoMatch = debounced.trim() && teamResults.length === 0 && prospectResults.length === 0;
 
   return createPortal(
     <div className="fixed inset-0 z-[1000]">
@@ -245,16 +197,9 @@ export default function SearchOverlay({
                 } else if (e.key === 'ArrowUp') {
                   e.preventDefault();
                   setActive((a) => Math.max(a - 1, 0));
-                } else if (e.key === 'Enter' && results[active]) {
-                  const r = results[active];
-                  // IMPORTANT: do NOT jump to "next game".
-                  // Switch to Team/Prospect view that replaces daily list.
-                  if (r.type === 'team') {
-                    onGoTeam(r.label);
-                  } else {
-                    onGoProspect(r.label);
-                  }
-                  onClose();
+                } else if (e.key === 'Enter') {
+                  // Use deterministic resolver - never reuses stale ?team= value
+                  onConfirm(e);
                 }
               }}
             />
@@ -266,32 +211,57 @@ export default function SearchOverlay({
             </button>
           </div>
           <div className="max-h-[60vh] overflow-auto">
-            {results.length === 0 ? (
-              <div className="p-4 text-sm text-neutral-600">No matches</div>
-            ) : (
-              results.map((r, i) => (
-                <button
-                  key={r.key}
-                  className={`w-full text-left px-3 py-2 text-sm hover:bg-neutral-50 transition-colors ${
-                    i === active ? 'bg-neutral-100' : ''
-                  }`}
-                  onClick={() => {
-                    if (r.type === 'team') {
-                      onGoTeam(r.label);
-                    } else {
-                      onGoProspect(r.label);
-                    }
-                    onClose();
-                  }}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="font-medium">{r.label}</div>
-                    <div className="text-neutral-500 text-xs">
-                      {r.type === 'team' ? 'Team' : 'Prospect'}
-                    </div>
-                  </div>
-                </button>
-              ))
+            {showNoMatch && (
+              <div className="p-4 text-sm text-neutral-600">
+                No team match. Try the official name (e.g., "Kansas State") or a known alias (e.g.,
+                "KU", "UNC").
+              </div>
+            )}
+            {showDisambiguation && (
+              <div className="p-2 border-b bg-neutral-50">
+                <div className="text-xs font-semibold text-neutral-600 mb-1">
+                  Multiple matches — select one:
+                </div>
+                {teamResults.slice(0, 8).map((team, i) => (
+                  <button
+                    key={team.canon}
+                    className={`w-full text-left px-3 py-2 text-sm rounded hover:bg-white transition-colors ${
+                      i === active ? 'bg-white font-medium' : ''
+                    }`}
+                    onClick={() => {
+                      onPickTeam(team);
+                    }}
+                  >
+                    {team.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {results.length > 0 && !showDisambiguation && (
+              <div>
+                {results.map((r, i) => {
+                  const isTeam = !('type' in r);
+                  const label = isTeam ? (r as TeamItem).label : (r as ProspectEntry).label;
+                  const key = isTeam ? `t:${(r as TeamItem).canon}` : (r as ProspectEntry).key;
+
+                  return (
+                    <button
+                      key={key}
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-neutral-50 transition-colors ${
+                        i === active ? 'bg-neutral-100' : ''
+                      }`}
+                      onClick={() => choose(r)}
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="font-medium">{label}</div>
+                        <div className="text-neutral-500 text-xs">
+                          {isTeam ? 'Team' : 'Prospect'}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>

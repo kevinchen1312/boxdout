@@ -50,23 +50,25 @@ export async function GET(request: Request) {
     
     const { gamesByDate, allGames } = await loadAllSchedules(forceReload);
     
-    // Validation: Check that Tennessee has Nate Ament
-    const tenKey = canonTeam('Tennessee');
-    const missingAment = allGames.filter(g => {
-      const homeKey = canonTeam(g.homeTeam.displayName || g.homeTeam.name || '');
-      const awayKey = canonTeam(g.awayTeam.displayName || g.awayTeam.name || '');
-      const isTennesseeGame = homeKey === tenKey || awayKey === tenKey;
-      if (!isTennesseeGame) return false;
-      const hasAment = [...g.homeProspects, ...g.awayProspects].some(p => 
-        /nate\s+ament/i.test(p.name)
-      );
-      return !hasAment;
-    });
-    
-    if (missingAment.length) {
-      console.warn('Tennessee missing Nate Ament on:', 
-        missingAment.map(g => `${g.awayTeam.displayName} @ ${g.homeTeam.displayName} ${g.dateKey || g.date.substring(0, 10)}`)
-      );
+    // Validation: Check that Tennessee has Nate Ament (only in dev)
+    if (process.env.NODE_ENV === 'development') {
+      const tenKey = canonTeam('Tennessee');
+      const missingAment = allGames.filter(g => {
+        const homeKey = canonTeam(g.homeTeam.displayName || g.homeTeam.name || '');
+        const awayKey = canonTeam(g.awayTeam.displayName || g.awayTeam.name || '');
+        const isTennesseeGame = homeKey === tenKey || awayKey === tenKey;
+        if (!isTennesseeGame) return false;
+        const hasAment = [...g.homeProspects, ...g.awayProspects].some(p => 
+          /nate\s+ament/i.test(p.name)
+        );
+        return !hasAment;
+      });
+      
+      if (missingAment.length) {
+        console.warn('Tennessee missing Nate Ament on:', 
+          missingAment.map(g => `${g.awayTeam.displayName} @ ${g.homeTeam.displayName} ${g.dateKey || g.date.substring(0, 10)}`)
+        );
+      }
     }
     
     // Pre-sort all games by date
@@ -77,7 +79,15 @@ export async function GET(request: Request) {
     
     console.timeEnd('buildData');
     
-    return NextResponse.json({ games: sortedGamesByDate });
+    // Add caching headers for better performance
+    return NextResponse.json(
+      { games: sortedGamesByDate },
+      {
+        headers: {
+          'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+        },
+      }
+    );
   } catch (error) {
     console.error('Error loading all schedules:', error);
     return NextResponse.json(

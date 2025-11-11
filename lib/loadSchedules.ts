@@ -821,21 +821,22 @@ const formatCompetitionTipoff = (isoString?: string) => {
   if (Number.isNaN(date.getTime())) return null;
 
   try {
+    // Use user's local timezone instead of ET
     const labelFormatter = new Intl.DateTimeFormat('en-US', {
       hour: 'numeric',
       minute: '2-digit',
       hour12: true,
-      timeZone: 'America/New_York',
+      // No timeZone specified - uses user's local timezone
     });
 
     const sortFormatter = new Intl.DateTimeFormat('en-US', {
       hour: '2-digit',
       minute: '2-digit',
       hourCycle: 'h23',
-      timeZone: 'America/New_York',
+      // No timeZone specified - uses user's local timezone
     });
 
-    const label = `${labelFormatter.format(date)} ET`;
+    const label = labelFormatter.format(date);
     const sortParts = sortFormatter.format(date).split(':');
     const hours = Number.parseInt(sortParts[0], 10);
     const minutes = Number.parseInt(sortParts[1], 10);

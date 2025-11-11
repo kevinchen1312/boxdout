@@ -3,6 +3,7 @@
 import { useState, memo } from 'react';
 import { GameWithProspects } from '../utils/gameMatching';
 import { format, parseISO } from 'date-fns';
+import { convertTipoffToLocal } from '../utils/timezone';
 
 interface GameCardProps {
   game: GameWithProspects;
@@ -11,7 +12,8 @@ interface GameCardProps {
 
 const deriveTipoff = (game: GameWithProspects) => {
   if (game.tipoff) {
-    return game.tipoff;
+    // Convert ET times to local timezone
+    return convertTipoffToLocal(game.tipoff, game.date);
   }
 
   if (!game.date) {
@@ -19,6 +21,7 @@ const deriveTipoff = (game: GameWithProspects) => {
   }
 
   try {
+    // Format from ISO date in local timezone
     return format(parseISO(game.date), 'h:mm a');
   } catch {
     return '';

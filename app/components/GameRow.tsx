@@ -2,6 +2,7 @@
 
 import React from 'react';
 import type { GameWithProspects } from '../utils/gameMatching';
+import { convertTipoffToLocal } from '../utils/timezone';
 
 type Prospect = { name: string; rank?: number; jersey?: string };
 
@@ -24,14 +25,14 @@ export default function GameRow({ game }: { game: GameWithProspects }) {
   const awayLogo = game.awayTeam.logo;
   const homeLogo = game.homeTeam.logo;
   
-  // Get time from tipoff field
-  const timeET = game.tipoff || '';
+  // Get time from tipoff field, converted to local timezone
+  const timeLocal = convertTipoffToLocal(game.tipoff, game.date) || '';
   const network = game.tv || 'TBA';
 
   return (
     <div id={`game-${game.id}`} className="game-row game-entry w-full bg-white">
       <div className="matchup-header">
-        <span className="time">{timeET || 'TBD'}</span>
+        <span className="time">{timeLocal || 'TBD'}</span>
         <span className="net">{network}</span>
       </div>
 

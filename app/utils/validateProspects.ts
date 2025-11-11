@@ -19,11 +19,14 @@ export function validateTeamCoverage(games: Game[], teamLabel: string, expectedN
 }
 
 // Global audit: ensure every team consistently carries its indexed prospects
-export function auditAllTeams(games: Game[], teamProsIndex: Map<string, {name:string}[]>) {
+export function auditAllTeams(
+  games: Game[],
+  teamProsIndex: Map<string, Array<{ name: string; team?: string }>>
+) {
   const problems: string[] = [];
   for (const [teamKey, plist] of teamProsIndex.entries()) {
-    const exp = plist.map(p => p.name);
-    const label = exp.length ? plist[0].team ?? teamKey : teamKey;
+    const exp = plist.map((p) => p.name);
+    const label = exp.length && plist[0].team ? plist[0].team : teamKey;
     problems.push(...validateTeamCoverage(games, label, exp));
   }
   return problems;

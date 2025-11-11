@@ -5,8 +5,8 @@ import Calendar from './components/Calendar';
 import LoadingSkeleton from './components/LoadingSkeleton';
 import DebugPanel from './components/DebugPanel';
 import WeekDatePicker from './components/WeekDatePicker';
-import SearchSchedules from './components/SearchSchedules';
 import SearchOverlay from './components/SearchOverlay';
+import SearchBox from './components/SearchBox';
 import TeamSchedule from './components/TeamSchedule';
 import DayTable from './components/DayTable';
 import { useGames } from './hooks/useGames';
@@ -31,6 +31,18 @@ export default function Home() {
   const [selectedProspect, setSelectedProspect] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const dateRangeRef = useRef<{ start: string; end: string } | null>(null);
+
+  // Flatten all games from all dates (for SearchBox catalog) - optimized
+  const allGames = useMemo(() => {
+    const flat: GameWithProspects[] = [];
+    const gameLists = Object.values(games);
+    // Pre-allocate if we can estimate size
+    for (const gamesList of gameLists) {
+      flat.push(...gamesList);
+    }
+    return flat;
+  }, [games]);
+
 
   // Build team index once
   const teamIndex = useMemo(() => {
@@ -60,17 +72,19 @@ export default function Home() {
     return map;
   }, [games]);
 
-  // URL deep linking - read on mount
+  // URL deep linking - hydrate from URL on load
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const team = params.get('team');
     const prospect = params.get('prospect');
     if (team) {
-      setSelectedTeam(team);
       setViewMode('team');
+      setSelectedTeam(team);
+      setSelectedProspect(null);
     } else if (prospect) {
-      setSelectedProspect(prospect);
       setViewMode('prospect');
+      setSelectedProspect(prospect);
+      setSelectedTeam(null);
     }
   }, []);
 
@@ -177,7 +191,7 @@ export default function Home() {
           <h1 className="text-2xl md:text-4xl font-bold text-gray-900">
             Prospect Game Planner
           </h1>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-1 justify-center max-w-2xl">
             {viewMode === 'day' && (
               <WeekDatePicker selectedDate={selectedDate} onSelectDate={setSelectedDate} />
             )}
@@ -203,22 +217,26 @@ export default function Home() {
                 </button>
               </div>
             )}
-            <button
-              className="border border-neutral-300 bg-white px-2.5 py-1 rounded-md hover:bg-neutral-50 transition-colors"
-              onClick={() => setSearchOpen(true)}
-              aria-label="Search"
-            >
-              Search
-            </button>
-            <SearchSchedules
-              gamesByDate={games}
-              onSelectDate={(d) => {
-                setSelectedDate(toLocalMidnight(d));
-                setViewMode('day');
+            <SearchBox
+              allGamesFull={allGames}
+              onPickTeam={(t) => {
+                setSelectedProspect(null);
+                setViewMode('team');
+                setSelectedTeam(t.label);
+
+                const params = new URLSearchParams();
+                params.set('team', t.label);
+                window.history.replaceState(null, '', `?${params.toString()}`);
               }}
-              parseLocalYMD={parseLocalYMD}
-              onSelectGame={onSelectGame}
-              onSelectTeam={onSelectTeam}
+              onPickProspect={(p) => {
+                setSelectedTeam(null);
+                setViewMode('prospect');
+                setSelectedProspect(p.label);
+
+                const params = new URLSearchParams();
+                params.set('prospect', p.label);
+                window.history.replaceState(null, '', `?${params.toString()}`);
+              }}
             />
           </div>
         </header>
