@@ -102,13 +102,92 @@ body {
 /* GAME ROWS — stack flush, no gaps; only draw a TOP border on rows after the first */
 .game-row {
   margin: 0;
-  padding: 12px 14px;
+  padding: 0;
   border: 0;
   box-sizing: border-box;
 }
 
 .day-table .game-row + .game-row {
   border-top: var(--cal-bw) solid var(--cal-bc);
+}
+
+/* Side-locked GameRow layout - never swaps sides */
+.game-entry {
+  border-left: var(--cal-bw) solid var(--cal-bc);
+  border-right: var(--cal-bw) solid var(--cal-bc);
+  border-top: var(--cal-bw) solid var(--cal-bc);
+}
+
+.matchup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  font-weight: 500;
+}
+
+.matchup-header .time {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #111827;
+  text-align: left;
+}
+
+.matchup-header .net {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+  text-align: right;
+}
+
+.matchup-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: center;
+  justify-items: center;
+  padding: 12px 14px;
+  gap: 24px;
+}
+
+.team-col {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.team-logo {
+  width: 100px;
+  height: 100px;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto 8px;
+}
+
+.team-logo-placeholder {
+  width: 100px;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f3f4f6;
+  border-radius: 4px;
+  margin: 0 auto 8px;
+}
+
+.team-logo-placeholder span {
+  font-size: 24px;
+}
+
+.team-name {
+  margin-top: 4px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: #1f2937;
+  line-height: 1.25;
+  padding: 0 4px;
 }
 
 /* Internal spacing for prospects */

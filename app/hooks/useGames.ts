@@ -1,37 +1,56 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { GameWithProspects } from '../utils/gameMatching';
 
+export type GamesByDate = Record<string, GameWithProspects[]>;
+
 export function useGames() {
-  const [games, setGames] = useState<Record<string, GameWithProspects[]>>({});
-  const [loading, setLoading] = useState(false);
+  const [games, setGames] = useState<GamesByDate>({});
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const loadedRef = useRef(false);
 
-  const fetchGames = useCallback(async (startDate: string, endDate: string) => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const response = await fetch(
-        `/api/games/range?startDate=${encodeURIComponent(startDate)}&endDate=${encodeURIComponent(endDate)}`
-      );
-
-      if (!response.ok) {
-        throw new Error(`Request failed with status ${response.status}`);
+  // One-time data load on mount
+  useEffect(() => {
+    if (loadedRef.current) return;
+    
+    let alive = true;
+    
+    (async () => {
+      try {
+        const response = await fetch('/api/games/all');
+        
+        if (!response.ok) {
+          throw new Error(`Request failed with status ${response.status}`);
+        }
+        
+        const data = await response.json();
+        const gamesByDate = (data.games ?? {}) as GamesByDate;
+        
+        if (alive) {
+          setGames(gamesByDate);
+          setLoading(false);
+          loadedRef.current = true;
+        }
+      } catch (err) {
+        console.error('Error loading schedule:', err);
+        if (alive) {
+          setError('Failed to load prospect schedules.');
+          setGames({});
+          setLoading(false);
+        }
       }
+    })();
+    
+    return () => {
+      alive = false;
+    };
+  }, []);
 
-      const data = await response.json();
-      const gamesByDate = (data.games ?? {}) as Record<string, GameWithProspects[]>;
-
-      setGames(gamesByDate);
-    } catch (err) {
-      console.error('Error loading schedule:', err);
-      setError('Failed to load prospect schedules.');
-      setGames({});
-    } finally {
-      setLoading(false);
-    }
+  // Keep fetchGames for backward compatibility but it's now a no-op
+  const fetchGames = useCallback(async (_startDate: string, _endDate: string) => {
+    // Data is already loaded, no-op
   }, []);
 
   return { games, loading, error, fetchGames };

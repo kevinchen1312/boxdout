@@ -1,23 +1,104 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import Calendar from './components/Calendar';
 import LoadingSkeleton from './components/LoadingSkeleton';
 import DebugPanel from './components/DebugPanel';
 import WeekDatePicker from './components/WeekDatePicker';
+import SearchSchedules from './components/SearchSchedules';
+import SearchOverlay from './components/SearchOverlay';
+import TeamSchedule from './components/TeamSchedule';
+import DayTable from './components/DayTable';
 import { useGames } from './hooks/useGames';
+import type { GameWithProspects } from './utils/gameMatching';
+import { format } from 'date-fns';
 import {
   toLocalMidnight,
   startOfWeekLocal,
   addDaysLocal,
   localYMD,
+  parseLocalYMD,
 } from './utils/dateKey';
+
+type ViewMode = 'day' | 'team' | 'prospect';
 
 export default function Home() {
   const { games, loading, error, fetchGames } = useGames();
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(() => toLocalMidnight(new Date()));
+  const [viewMode, setViewMode] = useState<ViewMode>('day');
+  const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
+  const [selectedProspect, setSelectedProspect] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
   const dateRangeRef = useRef<{ start: string; end: string } | null>(null);
+
+  // Build team index once
+  const teamIndex = useMemo(() => {
+    const map = new Map<string, GameWithProspects[]>();
+    for (const list of Object.values(games)) {
+      for (const g of list) {
+        const home = g.homeTeam.displayName || g.homeTeam.name || '';
+        const away = g.awayTeam.displayName || g.awayTeam.name || '';
+        
+        if (home && !map.has(home)) map.set(home, []);
+        if (away && !map.has(away)) map.set(away, []);
+        
+        if (home) map.get(home)!.push(g);
+        if (away) map.get(away)!.push(g);
+      }
+    }
+    // Sort each team's list by date/time once
+    for (const arr of map.values()) {
+      arr.sort((a, b) => {
+        const aDateKey = a.dateKey || a.date.substring(0, 10);
+        const bDateKey = b.dateKey || b.date.substring(0, 10);
+        const aTime = a.tipoff || '';
+        const bTime = b.tipoff || '';
+        return (aDateKey + aTime).localeCompare(bDateKey + bTime);
+      });
+    }
+    return map;
+  }, [games]);
+
+  // URL deep linking - read on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const team = params.get('team');
+    const prospect = params.get('prospect');
+    if (team) {
+      setSelectedTeam(team);
+      setViewMode('team');
+    } else if (prospect) {
+      setSelectedProspect(prospect);
+      setViewMode('prospect');
+    }
+  }, []);
+
+  // URL deep linking - update URL when view changes (avoid stray "?")
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (viewMode === 'team' && selectedTeam) {
+      params.set('team', selectedTeam);
+    } else if (viewMode === 'prospect' && selectedProspect) {
+      params.set('prospect', selectedProspect);
+    }
+    
+    const qs = params.toString();
+    const clean = qs ? `?${qs}` : window.location.pathname;
+    window.history.replaceState(null, '', clean);
+  }, [viewMode, selectedTeam, selectedProspect]);
+
+  // Keyboard shortcut: / to open search
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === '/' && !searchOpen) {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [searchOpen]);
 
   // Update ref when dateRange changes
   useEffect(() => {
@@ -29,7 +110,56 @@ export default function Home() {
     fetchGames(startDate, endDate);
   }, [fetchGames]);
 
+  const onSelectGame = useCallback((gameId: string) => {
+    // Scroll to the game row
+    const el = document.getElementById(`game-${gameId}`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
+  const onSelectTeam = useCallback((teamName: string) => {
+    setSelectedTeam(teamName);
+    setSelectedProspect(null);
+    setViewMode('team');
+  }, []);
+
+  const onSelectProspect = useCallback((prospectName: string) => {
+    setSelectedProspect(prospectName);
+    setSelectedTeam(null);
+    setViewMode('prospect');
+  }, []);
+
+
+  const gamesForProspect = useMemo(() => {
+    if (!selectedProspect) return [];
+
+    const out: GameWithProspects[] = [];
+    const seen = new Set<string>();
+
+    for (const arr of Object.values(games)) {
+      for (const g of arr) {
+        if (
+          (g.prospects || []).some((p) => p.name === selectedProspect) &&
+          !seen.has(g.id)
+        ) {
+          seen.add(g.id);
+          out.push(g);
+        }
+      }
+    }
+
+    out.sort((a, b) => {
+      const aDateKey = a.dateKey || a.date.substring(0, 10);
+      const bDateKey = b.dateKey || b.date.substring(0, 10);
+      const aTime = a.tipoff || '';
+      const bTime = b.tipoff || '';
+      return (aDateKey + aTime).localeCompare(bDateKey + bTime);
+    });
+
+    return out;
+  }, [selectedProspect, games]);
+
   // Initialize date range on mount and when selectedDate changes
+  // Note: This is now mainly for backward compatibility since we load all data at once
   useEffect(() => {
     const sow = startOfWeekLocal(selectedDate);
     const start = localYMD(sow);
@@ -37,26 +167,60 @@ export default function Home() {
     handleDateChange(start, end);
   }, [selectedDate, handleDateChange]);
 
-  // Auto-refresh every 5 minutes
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (dateRangeRef.current) {
-        console.log('Auto-refreshing game data...');
-        fetchGames(dateRangeRef.current.start, dateRangeRef.current.end);
-      }
-    }, 5 * 60 * 1000); // 5 minutes
-
-    return () => clearInterval(interval);
-  }, [fetchGames]);
+  // Note: Auto-refresh removed since we load all data at once
+  // If refresh is needed, reload the page or implement a manual refresh button
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 overflow-x-hidden">
       <div className="container mx-auto px-32 py-4 md:py-6 max-w-4xl">
-        <header className="flex items-center justify-between mb-4 md:mb-6">
+        <header className="flex items-center justify-between mb-4 md:mb-6 gap-3">
           <h1 className="text-2xl md:text-4xl font-bold text-gray-900">
             Prospect Game Planner
           </h1>
-          <WeekDatePicker selectedDate={selectedDate} onSelectDate={setSelectedDate} />
+          <div className="flex items-center gap-3">
+            {viewMode === 'day' && (
+              <WeekDatePicker selectedDate={selectedDate} onSelectDate={setSelectedDate} />
+            )}
+            {(viewMode === 'team' || viewMode === 'prospect') && (
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-gray-900">
+                  {viewMode === 'team' && selectedTeam
+                    ? `${selectedTeam} — Full Schedule`
+                    : viewMode === 'prospect' && selectedProspect
+                    ? `${selectedProspect} — Matchups`
+                    : ''}
+                </span>
+                <button
+                  className="border border-neutral-900 bg-white px-2.5 py-1 rounded-md font-semibold hover:bg-neutral-50 transition-colors"
+                  onClick={() => {
+                    setViewMode('day');
+                    setSelectedTeam(null);
+                    setSelectedProspect(null);
+                  }}
+                  aria-label="Back to Day View"
+                >
+                  Back to Day
+                </button>
+              </div>
+            )}
+            <button
+              className="border border-neutral-300 bg-white px-2.5 py-1 rounded-md hover:bg-neutral-50 transition-colors"
+              onClick={() => setSearchOpen(true)}
+              aria-label="Search"
+            >
+              Search
+            </button>
+            <SearchSchedules
+              gamesByDate={games}
+              onSelectDate={(d) => {
+                setSelectedDate(toLocalMidnight(d));
+                setViewMode('day');
+              }}
+              parseLocalYMD={parseLocalYMD}
+              onSelectGame={onSelectGame}
+              onSelectTeam={onSelectTeam}
+            />
+          </div>
         </header>
 
         {error && (
@@ -73,8 +237,55 @@ export default function Home() {
             <LoadingSkeleton />
           ) : (
             <>
-              <Calendar games={games} onDateChange={handleDateChange} selectedDate={selectedDate} />
-              {!loading && Object.keys(games).length === 0 && dateRange && (
+              {viewMode === 'day' && (
+                <Calendar games={games} onDateChange={handleDateChange} selectedDate={selectedDate} />
+              )}
+              {viewMode === 'team' && selectedTeam && (
+                <div className="w-[60vw] mx-auto">
+                  <TeamSchedule
+                    team={selectedTeam}
+                    gamesByDate={games}
+                    parseLocalYMD={parseLocalYMD}
+                    DayTable={DayTable}
+                  />
+                </div>
+              )}
+              {viewMode === 'prospect' && selectedProspect && (
+                <div className="w-[60vw] mx-auto">
+                  <section>
+                    <div className="date-header" style={{ border: 'none' }}>
+                      {selectedProspect} — Matchups ({gamesForProspect.length})
+                    </div>
+                    {gamesForProspect.length > 0 ? (
+                      (() => {
+                        // Group games by date
+                        const grouped: Record<string, GameWithProspects[]> = {};
+                        for (const g of gamesForProspect) {
+                          const dateKey = g.dateKey || g.date.substring(0, 10);
+                          if (!grouped[dateKey]) grouped[dateKey] = [];
+                          grouped[dateKey].push(g);
+                        }
+                        // Sort each date's games by time
+                        for (const k in grouped) {
+                          grouped[k].sort((a, b) => {
+                            const aTime = a.tipoff || '';
+                            const bTime = b.tipoff || '';
+                            return aTime.localeCompare(bTime);
+                          });
+                        }
+                        return Object.keys(grouped)
+                          .sort()
+                          .map((dk) => (
+                            <DayTable key={dk} date={parseLocalYMD(dk)} games={grouped[dk]} />
+                          ));
+                      })()
+                    ) : (
+                      <div className="text-sm text-neutral-600 px-2 py-3">No games found for {selectedProspect}.</div>
+                    )}
+                  </section>
+                </div>
+              )}
+              {!loading && Object.keys(games).length === 0 && dateRange && viewMode === 'day' && (
                 <div className="text-center py-12">
                   <div className="text-6xl mb-4">🏀</div>
                   <h3 className="text-xl font-semibold text-gray-700 mb-2">
@@ -91,6 +302,22 @@ export default function Home() {
             </>
           )}
         </div>
+
+        <SearchOverlay
+          open={searchOpen}
+          onClose={() => setSearchOpen(false)}
+          gamesByDate={games}
+          onGoTeam={(team) => {
+            setSelectedProspect(null);
+            setSelectedTeam(team);
+            setViewMode('team');
+          }}
+          onGoProspect={(name) => {
+            setSelectedTeam(null);
+            setSelectedProspect(name);
+            setViewMode('prospect');
+          }}
+        />
 
       </div>
       

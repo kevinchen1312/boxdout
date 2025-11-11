@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import { GameWithProspects } from '../utils/gameMatching';
 import { format, parseISO } from 'date-fns';
 
@@ -51,7 +51,7 @@ const formatGameDate = (game: GameWithProspects) => {
   }
 };
 
-export default function GameCard({ game, compact = false }: GameCardProps) {
+const GameCard = memo(function GameCard({ game, compact = false }: GameCardProps) {
   const [showTooltip, setShowTooltip] = useState(false);
 
   const tipoffText = deriveTipoff(game) || 'TBD';
@@ -93,8 +93,9 @@ export default function GameCard({ game, compact = false }: GameCardProps) {
 
   const awayTeamName = game.awayTeam.displayName || game.awayTeam.name;
   const homeTeamName = game.homeTeam.displayName || game.homeTeam.name;
-  const awayProspects = [...game.awayProspects].sort((a, b) => a.rank - b.rank);
-  const homeProspects = [...game.homeProspects].sort((a, b) => a.rank - b.rank);
+  // Prospects are already pre-sorted from server, no need to sort again
+  const awayProspects = game.awayProspects;
+  const homeProspects = game.homeProspects;
 
   // Get team logos - use ESPN CDN or fallback to provided logo
   const getTeamLogo = (team: GameWithProspects['awayTeam']) => {
@@ -109,7 +110,7 @@ export default function GameCard({ game, compact = false }: GameCardProps) {
   const homeLogo = getTeamLogo(game.homeTeam);
 
   return (
-    <div className="game-row w-full bg-white">
+    <div id={`game-${game.id}`} className="game-row w-full bg-white">
       {/* Time and Network - top left and top right */}
       <div className="flex items-center justify-between px-[10px] pt-3 pb-2">
         <span className="text-sm font-medium text-gray-900 text-left">{tipoffText}</span>
@@ -126,7 +127,12 @@ export default function GameCard({ game, compact = false }: GameCardProps) {
             <img
               src={awayLogo}
               alt={awayTeamName}
-              className="max-w-[100px] w-auto h-auto object-contain mb-2"
+              className="team-logo mb-2"
+              width={100}
+              height={100}
+              loading="lazy"
+              decoding="async"
+              referrerPolicy="no-referrer"
               onError={(e) => {
                 // Hide broken images
                 e.currentTarget.style.display = 'none';
@@ -160,7 +166,12 @@ export default function GameCard({ game, compact = false }: GameCardProps) {
             <img
               src={homeLogo}
               alt={homeTeamName}
-              className="max-w-[100px] w-auto h-auto object-contain mb-2"
+              className="team-logo mb-2"
+              width={100}
+              height={100}
+              loading="lazy"
+              decoding="async"
+              referrerPolicy="no-referrer"
               onError={(e) => {
                 // Hide broken images
                 e.currentTarget.style.display = 'none';
@@ -190,4 +201,6 @@ export default function GameCard({ game, compact = false }: GameCardProps) {
       </div>
     </div>
   );
-}
+});
+
+export default GameCard;
