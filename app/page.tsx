@@ -24,14 +24,18 @@ import {
 type ViewMode = 'day' | 'team' | 'prospect';
 
 export default function Home() {
-  // Initialize ranking source directly from localStorage
-  const [rankingSource, setRankingSource] = useState<RankingSource>(() => {
-    if (typeof window !== 'undefined') {
-      const useMyBoard = localStorage.getItem('useMyBoard');
-      return useMyBoard === 'true' ? 'myboard' : 'espn';
+  // Initialize ranking source to 'espn' for SSR, update on mount
+  const [rankingSource, setRankingSource] = useState<RankingSource>('espn');
+  const [mounted, setMounted] = useState(false);
+  
+  // Load ranking source from localStorage after mount to avoid hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+    const useMyBoard = localStorage.getItem('useMyBoard');
+    if (useMyBoard === 'true') {
+      setRankingSource('myboard');
     }
-    return 'espn';
-  });
+  }, []);
   
   const { games, loading, error, fetchGames } = useGames({ source: rankingSource });
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null);
