@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseISO, format } from 'date-fns';
 import { getGamesBetween } from '@/lib/loadSchedules';
+import type { RankingSource } from '@/lib/loadProspects';
 
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const startDateParam = searchParams.get('startDate');
     const endDateParam = searchParams.get('endDate');
+    const sourceParam = searchParams.get('source') || 'espn';
     
     if (!startDateParam || !endDateParam) {
       return NextResponse.json(
@@ -14,6 +16,16 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       );
     }
+    
+    // Validate source parameter
+    if (sourceParam !== 'espn' && sourceParam !== 'myboard') {
+      return NextResponse.json(
+        { error: 'Invalid source. Must be "espn" or "myboard"', games: {} },
+        { status: 400 }
+      );
+    }
+    
+    const source = sourceParam as RankingSource;
 
     const startDate = parseISO(startDateParam);
     const endDate = parseISO(endDateParam);
@@ -25,9 +37,9 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    const games = await getGamesBetween(format(startDate, 'yyyy-MM-dd'), format(endDate, 'yyyy-MM-dd'));
+    const games = await getGamesBetween(format(startDate, 'yyyy-MM-dd'), format(endDate, 'yyyy-MM-dd'), source);
 
-    return NextResponse.json({ games });
+    return NextResponse.json({ games, source });
   } catch (error) {
     console.error('Error fetching schedule range:', error);
     return NextResponse.json(

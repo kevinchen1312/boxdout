@@ -4,22 +4,25 @@ import React from 'react';
 import type { GameWithProspects } from '../utils/gameMatching';
 import { convertTipoffToLocal } from '../utils/timezone';
 
+export type RankingSource = 'espn' | 'myboard';
+
 type Prospect = { name: string; rank?: number; jersey?: string };
 
-const renderPros = (list?: Prospect[]) =>
+const renderPros = (list?: Prospect[], sourceLabel?: string) =>
   !list?.length
     ? null
     : (
       <div className="text-sm leading-tight">
         {list.map((p, i) => (
           <div key={i} className="text-xs text-gray-700 leading-snug">
-            {`ESPN ${p.rank ?? '—'}: ${p.name}${p.jersey ? `, #${p.jersey}` : ''}`}
+            {`${sourceLabel || 'ESPN'} ${p.rank ?? '—'}: ${p.name}${p.jersey ? `, #${p.jersey}` : ''}`}
           </div>
         ))}
       </div>
     );
 
-export default function GameRow({ game }: { game: GameWithProspects }) {
+export default function GameRow({ game, rankingSource = 'espn' }: { game: GameWithProspects; rankingSource?: RankingSource }) {
+  const sourceLabel = rankingSource === 'myboard' ? 'myBoard' : 'ESPN';
   const awayTeamName = game.awayTeam.displayName || game.awayTeam.name || '';
   const homeTeamName = game.homeTeam.displayName || game.homeTeam.name || '';
   const awayLogo = game.awayTeam.logo;
@@ -27,13 +30,16 @@ export default function GameRow({ game }: { game: GameWithProspects }) {
   
   // Get time from tipoff field, converted to local timezone
   const timeLocal = convertTipoffToLocal(game.tipoff, game.date) || '';
-  const network = game.tv || 'TBA';
+  const network = game.tv || '';
+  
+  // Only show network if it's not TBA/TBD
+  const shouldShowNetwork = network && !/^(TBA|TBD)$/i.test(network.trim());
 
   return (
     <div id={`game-${game.id}`} className="game-row game-entry w-full bg-white">
       <div className="matchup-header">
         <span className="time">{timeLocal || 'TBD'}</span>
-        <span className="net">{network}</span>
+        {shouldShowNetwork && <span className="net">{network}</span>}
       </div>
 
       <div className="matchup-body">
@@ -59,7 +65,7 @@ export default function GameRow({ game }: { game: GameWithProspects }) {
             </div>
           )}
           <div className="team-name">{awayTeamName}</div>
-          {renderPros(game.awayProspects)}
+          {renderPros(game.awayProspects, sourceLabel)}
         </div>
 
         {/* RIGHT COLUMN = HOME */}
@@ -84,7 +90,7 @@ export default function GameRow({ game }: { game: GameWithProspects }) {
             </div>
           )}
           <div className="team-name">{homeTeamName}</div>
-          {renderPros(game.homeProspects)}
+          {renderPros(game.homeProspects, sourceLabel)}
         </div>
       </div>
     </div>

@@ -5,9 +5,12 @@ import { GameWithProspects } from '../utils/gameMatching';
 import { format, parseISO } from 'date-fns';
 import { convertTipoffToLocal } from '../utils/timezone';
 
+export type RankingSource = 'espn' | 'myboard';
+
 interface GameCardProps {
   game: GameWithProspects;
   compact?: boolean;
+  rankingSource?: RankingSource;
 }
 
 const deriveTipoff = (game: GameWithProspects) => {
@@ -54,8 +57,9 @@ const formatGameDate = (game: GameWithProspects) => {
   }
 };
 
-const GameCard = memo(function GameCard({ game, compact = false }: GameCardProps) {
+const GameCard = memo(function GameCard({ game, compact = false, rankingSource = 'espn' }: GameCardProps) {
   const [showTooltip, setShowTooltip] = useState(false);
+  const sourceLabel = rankingSource === 'myboard' ? 'myBoard' : 'ESPN';
 
   const tipoffText = deriveTipoff(game) || 'TBD';
   const matchupLabel = buildMatchupLabel(game);
@@ -117,9 +121,11 @@ const GameCard = memo(function GameCard({ game, compact = false }: GameCardProps
       {/* Time and Network - top left and top right */}
       <div className="flex items-center justify-between px-[10px] pt-3 pb-2">
         <span className="text-sm font-medium text-gray-900 text-left">{tipoffText}</span>
-        <span className="text-sm font-medium text-gray-700 text-right">
-          {game.tv || 'TBA'}
-        </span>
+        {game.tv && (
+          <span className="text-sm font-medium text-gray-700 text-right">
+            {game.tv}
+          </span>
+        )}
       </div>
 
       {/* School logos side-by-side, centered */}
@@ -130,12 +136,16 @@ const GameCard = memo(function GameCard({ game, compact = false }: GameCardProps
             <img
               src={awayLogo}
               alt={awayTeamName}
-              className="team-logo mb-2"
+              className={`team-logo mb-2 ${awayLogo.includes('mega-superbet') ? 'logo-enhanced' : ''}`}
               width={100}
               height={100}
               loading="lazy"
               decoding="async"
               referrerPolicy="no-referrer"
+              style={awayLogo.includes('mega-superbet') ? {
+                filter: 'invert(1) drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
+                backgroundColor: 'transparent'
+              } : undefined}
               onError={(e) => {
                 // Hide broken images
                 e.currentTarget.style.display = 'none';
@@ -156,7 +166,7 @@ const GameCard = memo(function GameCard({ game, compact = false }: GameCardProps
                   key={`away-${prospect.rank}-${prospect.name}`}
                   className="text-xs text-gray-700 leading-snug"
                 >
-                  ESPN {prospect.rank}: {prospect.name}
+                  {sourceLabel} {prospect.rank}: {prospect.name}
                   {prospect.jersey ? `, #${prospect.jersey}` : ''}
                 </div>
               ))}
@@ -169,12 +179,16 @@ const GameCard = memo(function GameCard({ game, compact = false }: GameCardProps
             <img
               src={homeLogo}
               alt={homeTeamName}
-              className="team-logo mb-2"
+              className={`team-logo mb-2 ${homeLogo.includes('mega-superbet') ? 'logo-enhanced' : ''}`}
               width={100}
               height={100}
               loading="lazy"
               decoding="async"
               referrerPolicy="no-referrer"
+              style={homeLogo.includes('mega-superbet') ? {
+                filter: 'invert(1) drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
+                backgroundColor: 'transparent'
+              } : undefined}
               onError={(e) => {
                 // Hide broken images
                 e.currentTarget.style.display = 'none';
@@ -195,7 +209,7 @@ const GameCard = memo(function GameCard({ game, compact = false }: GameCardProps
                   key={`home-${prospect.rank}-${prospect.name}`}
                   className="text-xs text-gray-700 leading-snug"
                 >
-                  ESPN {prospect.rank}: {prospect.name}
+                  {sourceLabel} {prospect.rank}: {prospect.name}
                   {prospect.jersey ? `, #${prospect.jersey}` : ''}
                 </div>
               ))}

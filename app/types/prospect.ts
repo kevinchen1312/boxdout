@@ -9,5 +9,6 @@ export interface Prospect {
   teamDisplay?: string;
   teamId?: string;
   jersey?: string;
+  espnRank?: number; // Original ESPN rank for schedule matching
 }
 

@@ -4,22 +4,32 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import type { GameWithProspects } from '../utils/gameMatching';
 
 export type GamesByDate = Record<string, GameWithProspects[]>;
+export type RankingSource = 'espn' | 'myboard';
 
-export function useGames() {
+interface UseGamesOptions {
+  source?: RankingSource;
+}
+
+export function useGames(options: UseGamesOptions = {}) {
+  const { source = 'espn' } = options;
   const [games, setGames] = useState<GamesByDate>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const loadedRef = useRef(false);
+  const loadedSourceRef = useRef<RankingSource | null>(null);
 
-  // One-time data load on mount
+  // Load data when source changes or on mount
   useEffect(() => {
-    if (loadedRef.current) return;
+    // If we've already loaded this source, skip
+    if (loadedSourceRef.current === source && Object.keys(games).length > 0) {
+      return;
+    }
     
     let alive = true;
     
     (async () => {
       try {
-        const response = await fetch('/api/games/all');
+        setLoading(true);
+        const response = await fetch(`/api/games/all?source=${source}`);
         
         if (!response.ok) {
           throw new Error(`Request failed with status ${response.status}`);
@@ -31,7 +41,7 @@ export function useGames() {
         if (alive) {
           setGames(gamesByDate);
           setLoading(false);
-          loadedRef.current = true;
+          loadedSourceRef.current = source;
         }
       } catch (err) {
         console.error('Error loading schedule:', err);
@@ -46,12 +56,12 @@ export function useGames() {
     return () => {
       alive = false;
     };
-  }, []);
+  }, [source]);
 
   // Keep fetchGames for backward compatibility but it's now a no-op
   const fetchGames = useCallback(async (_startDate: string, _endDate: string) => {
     // Data is already loaded, no-op
   }, []);
 
-  return { games, loading, error, fetchGames };
+  return { games, loading, error, fetchGames, source };
 }

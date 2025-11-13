@@ -8,15 +8,16 @@ import {
   startOfWeekLocal,
   addDaysLocal,
 } from '../utils/dateKey';
-import DayTable from './DayTable';
+import DayTable, { type RankingSource } from './DayTable';
 
 interface CalendarProps {
   games: Record<string, GameWithProspects[]>;
   onDateChange?: (startDate: string, endDate: string) => void;
   selectedDate?: Date;
+  rankingSource?: RankingSource;
 }
 
-const Calendar = memo(function Calendar({ games, onDateChange, selectedDate }: CalendarProps) {
+const Calendar = memo(function Calendar({ games, onDateChange, selectedDate, rankingSource = 'espn' }: CalendarProps) {
   const displayDate = selectedDate ? toLocalMidnight(selectedDate) : toLocalMidnight(new Date());
   const dateKey = localYMD(displayDate);
   
@@ -38,7 +39,7 @@ const Calendar = memo(function Calendar({ games, onDateChange, selectedDate }: C
 
   return (
     <div className="w-[60vw] mx-auto">
-      <DayTable date={displayDate} games={gamesForDay} />
+      <DayTable date={displayDate} games={gamesForDay} rankingSource={rankingSource} />
     </div>
   );
 });

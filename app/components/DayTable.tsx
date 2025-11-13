@@ -6,12 +6,15 @@ import { localYMD } from '../utils/dateKey';
 import type { GameWithProspects } from '../utils/gameMatching';
 import GameRow from './GameRow';
 
+export type RankingSource = 'espn' | 'myboard';
+
 interface DayTableProps {
   date: Date;
   games: GameWithProspects[];
+  rankingSource?: RankingSource;
 }
 
-const DayTable = memo(function DayTable({ date, games }: DayTableProps) {
+const DayTable = memo(function DayTable({ date, games, rankingSource = 'espn' }: DayTableProps) {
   const dateKey = localYMD(date);
   const isToday = dateKey === localYMD(new Date());
 
@@ -33,7 +36,7 @@ const DayTable = memo(function DayTable({ date, games }: DayTableProps) {
       {games.length > 0 ? (
         <div className="day-table">
           {games.map((game) => (
-            <GameRow key={game.id} game={game} />
+            <GameRow key={game.id} game={game} rankingSource={rankingSource} />
           ))}
         </div>
       ) : (

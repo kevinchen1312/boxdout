@@ -1,11 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { format, parseISO } from 'date-fns';
 import { getGamesForDate } from '@/lib/loadSchedules';
+import type { RankingSource } from '@/lib/loadProspects';
 
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const dateParam = searchParams.get('date');
+    const sourceParam = searchParams.get('source') || 'espn';
+    
+    // Validate source parameter
+    if (sourceParam !== 'espn' && sourceParam !== 'myboard') {
+      return NextResponse.json(
+        { error: 'Invalid source. Must be "espn" or "myboard"', games: [] },
+        { status: 400 }
+      );
+    }
+    
+    const source = sourceParam as RankingSource;
     
     // If no date provided, use today
     const isoDate = dateParam || format(new Date(), 'yyyy-MM-dd');
@@ -18,9 +30,9 @@ export async function GET(request: NextRequest) {
     }
     const dateKey = format(parsedDate, 'yyyy-MM-dd');
     
-    const games = await getGamesForDate(dateKey);
+    const games = await getGamesForDate(dateKey, source);
 
-    return NextResponse.json({ games, date: dateKey });
+    return NextResponse.json({ games, date: dateKey, source });
   } catch (error) {
     console.error('Error fetching schedule:', error);
     return NextResponse.json(

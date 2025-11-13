@@ -6,23 +6,35 @@
     "dev": "next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "fetch:pros": "tsx scripts/fetch-pro-schedules.ts --debug",
+    "fetch:pros:headful": "tsx scripts/fetch-pro-schedules.ts --debug --headful",
+    "fetch:euroleague": "node scripts/fetch-euroleague-times.mjs"
   },
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@types/react-window": "^1.8.8",
     "axios": "^1.13.2",
     "date-fns": "^4.1.0",
     "next": "16.0.1",
     "react": "19.2.0",
-    "react-dom": "19.2.0"
+    "react-dom": "19.2.0",
+    "react-window": "^2.2.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.48.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.0.1",
+    "luxon": "^3.5.0",
+    "playwright": "^1.48.0",
     "tailwindcss": "^4",
+    "tsx": "^4.19.2",
     "typescript": "^5"
   }
 }

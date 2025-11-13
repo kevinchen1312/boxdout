@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import Link from 'next/link';
 import Calendar from './components/Calendar';
 import LoadingSkeleton from './components/LoadingSkeleton';
 import DebugPanel from './components/DebugPanel';
@@ -9,7 +10,7 @@ import SearchOverlay from './components/SearchOverlay';
 import SearchBox from './components/SearchBox';
 import TeamSchedule from './components/TeamSchedule';
 import DayTable from './components/DayTable';
-import { useGames } from './hooks/useGames';
+import { useGames, type RankingSource } from './hooks/useGames';
 import type { GameWithProspects } from './utils/gameMatching';
 import { format } from 'date-fns';
 import {
@@ -23,7 +24,16 @@ import {
 type ViewMode = 'day' | 'team' | 'prospect';
 
 export default function Home() {
-  const { games, loading, error, fetchGames } = useGames();
+  // Initialize ranking source directly from localStorage
+  const [rankingSource, setRankingSource] = useState<RankingSource>(() => {
+    if (typeof window !== 'undefined') {
+      const useMyBoard = localStorage.getItem('useMyBoard');
+      return useMyBoard === 'true' ? 'myboard' : 'espn';
+    }
+    return 'espn';
+  });
+  
+  const { games, loading, error, fetchGames } = useGames({ source: rankingSource });
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(() => toLocalMidnight(new Date()));
   const [viewMode, setViewMode] = useState<ViewMode>('day');
@@ -72,11 +82,12 @@ export default function Home() {
     return map;
   }, [games]);
 
-  // URL deep linking - hydrate from URL on load
+  // URL deep linking - hydrate from URL on load (separate from ranking source)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const team = params.get('team');
     const prospect = params.get('prospect');
+    
     if (team) {
       setViewMode('team');
       setSelectedTeam(team);
@@ -187,10 +198,29 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 overflow-x-hidden">
       <div className="container mx-auto px-32 py-4 md:py-6 max-w-4xl">
-        <header className="flex items-center justify-between mb-4 md:mb-6 gap-3">
-          <h1 className="text-2xl md:text-4xl font-bold text-gray-900">
-            Prospect Game Planner
-          </h1>
+        <header className="mb-4 md:mb-6">
+          {/* Top row: Title and controls */}
+          <div className="flex items-center justify-between mb-3 gap-3">
+            <h1 className="text-2xl md:text-4xl font-bold text-gray-900">
+              Prospect Game Planner
+            </h1>
+            <div className="flex items-center gap-2">
+              {/* Show current ranking source */}
+              <span className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-lg">
+                {rankingSource === 'espn' ? 'ESPN Rankings' : 'My Board'}
+              </span>
+              {/* Link to Rankings Editor */}
+              <Link
+                href="/rankings"
+                className="px-3 py-1.5 text-sm font-medium text-white bg-orange-600 border border-orange-600 rounded-lg hover:bg-orange-700 transition-colors"
+                title="Edit your custom rankings"
+              >
+                Edit Rankings
+              </Link>
+            </div>
+          </div>
+          
+          {/* Second row: View mode controls */}
           <div className="flex items-center gap-3 flex-1 justify-center max-w-2xl">
             {viewMode === 'day' && (
               <WeekDatePicker selectedDate={selectedDate} onSelectDate={setSelectedDate} />
@@ -256,7 +286,7 @@ export default function Home() {
           ) : (
             <>
               {viewMode === 'day' && (
-                <Calendar games={games} onDateChange={handleDateChange} selectedDate={selectedDate} />
+                <Calendar games={games} onDateChange={handleDateChange} selectedDate={selectedDate} rankingSource={rankingSource} />
               )}
               {viewMode === 'team' && selectedTeam && (
                 <div className="w-[60vw] mx-auto">
@@ -265,6 +295,7 @@ export default function Home() {
                     gamesByDate={games}
                     parseLocalYMD={parseLocalYMD}
                     DayTable={DayTable}
+                    rankingSource={rankingSource}
                   />
                 </div>
               )}
@@ -294,7 +325,7 @@ export default function Home() {
                         return Object.keys(grouped)
                           .sort()
                           .map((dk) => (
-                            <DayTable key={dk} date={parseLocalYMD(dk)} games={grouped[dk]} />
+                            <DayTable key={dk} date={parseLocalYMD(dk)} games={grouped[dk]} rankingSource={rankingSource} />
                           ));
                       })()
                     ) : (
