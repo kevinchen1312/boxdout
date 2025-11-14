@@ -12,9 +12,10 @@ interface DayTableProps {
   date: Date;
   games: GameWithProspects[];
   rankingSource?: RankingSource;
+  onOpenNotes?: (game: GameWithProspects) => void;
 }
 
-const DayTable = memo(function DayTable({ date, games, rankingSource = 'espn' }: DayTableProps) {
+const DayTable = memo(function DayTable({ date, games, rankingSource = 'espn', onOpenNotes }: DayTableProps) {
   const dateKey = localYMD(date);
   const isToday = dateKey === localYMD(new Date());
 
@@ -36,7 +37,7 @@ const DayTable = memo(function DayTable({ date, games, rankingSource = 'espn' }:
       {games.length > 0 ? (
         <div className="day-table">
           {games.map((game) => (
-            <GameRow key={game.id} game={game} rankingSource={rankingSource} />
+            <GameRow key={game.id} game={game} rankingSource={rankingSource} onOpenNotes={onOpenNotes} />
           ))}
         </div>
       ) : (

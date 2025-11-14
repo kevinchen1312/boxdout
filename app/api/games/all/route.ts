@@ -17,9 +17,21 @@ export async function GET(request: NextRequest) {
     
     const source = sourceParam as RankingSource;
     
+    console.time(`[API] loadAllSchedules-${source}`);
     const { gamesByDate } = await loadAllSchedules(source);
+    console.timeEnd(`[API] loadAllSchedules-${source}`);
 
-    return NextResponse.json({ games: gamesByDate, source });
+    return NextResponse.json(
+      { games: gamesByDate, source },
+      {
+        headers: {
+          // Cache for 5 minutes in browser and CDN, allow stale content for 10 minutes while revalidating
+          'Cache-Control': 'public, max-age=300, s-maxage=300, stale-while-revalidate=600',
+          // Add timestamp for debugging
+          'X-Generated-At': new Date().toISOString(),
+        },
+      }
+    );
   } catch (error) {
     console.error('Error fetching all schedules:', error);
     return NextResponse.json(

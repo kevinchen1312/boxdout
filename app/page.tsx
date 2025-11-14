@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import Link from 'next/link';
+import { SignInButton, SignUpButton, UserButton, useUser } from '@clerk/nextjs';
 import Calendar from './components/Calendar';
 import LoadingSkeleton from './components/LoadingSkeleton';
 import DebugPanel from './components/DebugPanel';
@@ -10,6 +11,8 @@ import SearchOverlay from './components/SearchOverlay';
 import SearchBox from './components/SearchBox';
 import TeamSchedule from './components/TeamSchedule';
 import DayTable from './components/DayTable';
+import NotesPanel from './components/NotesPanel';
+import FriendActivity from './components/FriendActivity';
 import { useGames, type RankingSource } from './hooks/useGames';
 import type { GameWithProspects } from './utils/gameMatching';
 import { format } from 'date-fns';
@@ -24,6 +27,7 @@ import {
 type ViewMode = 'day' | 'team' | 'prospect';
 
 export default function Home() {
+  const { isSignedIn } = useUser();
   // Initialize ranking source to 'espn' for SSR, update on mount
   const [rankingSource, setRankingSource] = useState<RankingSource>('espn');
   const [mounted, setMounted] = useState(false);
@@ -37,13 +41,14 @@ export default function Home() {
     }
   }, []);
   
-  const { games, loading, error, fetchGames } = useGames({ source: rankingSource });
+  const { games, loading, error, loadingMessage, fetchGames } = useGames({ source: rankingSource });
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(() => toLocalMidnight(new Date()));
   const [viewMode, setViewMode] = useState<ViewMode>('day');
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [selectedProspect, setSelectedProspect] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [notesPanelGame, setNotesPanelGame] = useState<GameWithProspects | null>(null);
   const dateRangeRef = useRef<{ start: string; end: string } | null>(null);
 
   // Flatten all games from all dates (for SearchBox catalog) - optimized
@@ -200,15 +205,16 @@ export default function Home() {
   // If refresh is needed, reload the page or implement a manual refresh button
 
   return (
+    <>
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 overflow-x-hidden">
-      <div className="container mx-auto px-32 py-4 md:py-6 max-w-4xl">
+      <div className="container mx-auto px-4 md:px-8 lg:px-32 py-4 md:py-6 max-w-7xl">
         <header className="mb-4 md:mb-6">
           {/* Top row: Title and controls */}
-          <div className="flex items-center justify-between mb-3 gap-3">
+          <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-3 gap-3">
             <h1 className="text-2xl md:text-4xl font-bold text-gray-900">
               Prospect Game Planner
             </h1>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {/* Show current ranking source */}
               <span className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-lg">
                 {rankingSource === 'espn' ? 'ESPN Rankings' : 'My Board'}
@@ -221,6 +227,38 @@ export default function Home() {
               >
                 Edit Rankings
               </Link>
+              {/* Profile/Auth Buttons */}
+              {isSignedIn ? (
+                <>
+                  <Link
+                    href="/notes"
+                    className="px-3 py-1.5 text-sm font-medium text-purple-600 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors"
+                    title="View your notes"
+                  >
+                    My Notes
+                  </Link>
+                  <Link
+                    href="/profile"
+                    className="px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+                  >
+                    Profile
+                  </Link>
+                  <UserButton afterSignOutUrl="/" />
+                </>
+              ) : (
+                <>
+                  <SignInButton mode="modal">
+                    <button className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                      Sign In
+                    </button>
+                  </SignInButton>
+                  <SignUpButton mode="modal">
+                    <button className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+                      Sign Up
+                    </button>
+                  </SignUpButton>
+                </>
+              )}
             </div>
           </div>
           
@@ -284,27 +322,41 @@ export default function Home() {
           </div>
         )}
 
+        {/* Friend Activity Sidebar */}
+        {isSignedIn && (
+          <div className="mb-6">
+            <FriendActivity />
+          </div>
+        )}
+
         <div className="bg-white rounded-xl shadow-2xl p-3 md:p-4 lg:p-6">
           {loading && !Object.keys(games).length ? (
-            <LoadingSkeleton />
+            <LoadingSkeleton message={loadingMessage} />
           ) : (
             <>
               {viewMode === 'day' && (
-                <Calendar games={games} onDateChange={handleDateChange} selectedDate={selectedDate} rankingSource={rankingSource} />
+                <Calendar 
+                  games={games} 
+                  onDateChange={handleDateChange} 
+                  selectedDate={selectedDate} 
+                  rankingSource={rankingSource}
+                  onOpenNotes={setNotesPanelGame}
+                />
               )}
               {viewMode === 'team' && selectedTeam && (
-                <div className="w-[60vw] mx-auto">
+                <div className="w-full max-w-5xl mx-auto">
                   <TeamSchedule
                     team={selectedTeam}
                     gamesByDate={games}
                     parseLocalYMD={parseLocalYMD}
                     DayTable={DayTable}
                     rankingSource={rankingSource}
+                    onOpenNotes={setNotesPanelGame}
                   />
                 </div>
               )}
               {viewMode === 'prospect' && selectedProspect && (
-                <div className="w-[60vw] mx-auto">
+                <div className="w-full max-w-5xl mx-auto">
                   <section>
                     <div className="date-header" style={{ border: 'none' }}>
                       {selectedProspect} — Matchups ({gamesForProspect.length})
@@ -329,7 +381,13 @@ export default function Home() {
                         return Object.keys(grouped)
                           .sort()
                           .map((dk) => (
-                            <DayTable key={dk} date={parseLocalYMD(dk)} games={grouped[dk]} rankingSource={rankingSource} />
+                            <DayTable 
+                              key={dk} 
+                              date={parseLocalYMD(dk)} 
+                              games={grouped[dk]} 
+                              rankingSource={rankingSource}
+                              onOpenNotes={setNotesPanelGame}
+                            />
                           ));
                       })()
                     ) : (
@@ -381,5 +439,15 @@ export default function Home() {
         dateRange={dateRange} 
       />
     </div>
+
+    <NotesPanel
+      game={notesPanelGame}
+      isOpen={!!notesPanelGame}
+      onClose={() => setNotesPanelGame(null)}
+      onNoteSaved={() => {
+        // Optionally refresh data or update UI after note is saved
+      }}
+    />
+    </>
   );
 }

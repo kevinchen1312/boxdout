@@ -4,6 +4,7 @@ import { parse, format } from 'date-fns';
 import type { Prospect } from '@/app/types/prospect';
 import type { GameWithProspects, TeamInfo } from '@/app/utils/gameMatching';
 import { getProspectsByRank, type RankingSource } from './loadProspects';
+import { batchPromises, batchPromisesSettled } from './batchPromises';
 
 interface ParsedScheduleEntry {
   key: string;
@@ -1594,9 +1595,13 @@ const ensureJerseyData = async (
     teamToProspects.get(matchedTeam.id)!.push(prospect);
   }
 
-  // Fetch all team rosters in parallel
-  await Promise.all(
-    Array.from(teamToProspects.entries()).map(async ([teamId, prospects]) => {
+  // Fetch team rosters in batches to avoid overwhelming ESPN API (was causing 30s+ load times)
+  const teamEntries = Array.from(teamToProspects.entries());
+  console.log(`[Schedule] Fetching rosters for ${teamEntries.length} teams in batches...`);
+  
+  await batchPromises(
+    teamEntries,
+    async ([teamId, prospects]) => {
       const rosterMap = await getRosterForTeam(teamId);
       if (!rosterMap.size) return;
 
@@ -1611,7 +1616,8 @@ const ensureJerseyData = async (
           }
         }
       }
-    })
+    },
+    5 // Process 5 teams at a time
   );
 };
 
@@ -1807,13 +1813,17 @@ const enrichWithBroadcasts = async (
     gamesByDate.get(dateKey)!.push(game);
   }
 
-  // Fetch all scoreboard events in parallel
+  // Fetch scoreboard events in batches to avoid overwhelming ESPN API (was causing 30s+ load times)
   const dateKeys = Array.from(gamesByDate.keys());
-  const eventsByDateResults = await Promise.allSettled(
-    dateKeys.map(async (dateKey) => {
+  console.log(`[Schedule] Fetching scoreboards for ${dateKeys.length} dates in batches...`);
+  
+  const eventsByDateResults = await batchPromisesSettled(
+    dateKeys,
+    async (dateKey) => {
       const events = await fetchScoreboardEvents(dateKey);
       return { dateKey, events };
-    })
+    },
+    10 // Process 10 dates at a time
   );
 
   // Process results
@@ -1909,11 +1919,22 @@ const finalizeGame = (id: string, game: AggregatedGameInternal): GameWithProspec
   };
 };
 
-const buildSchedules = async (source: RankingSource = 'espn'): Promise<LoadedSchedules> => {
+const buildSchedules = async (source: RankingSource = 'espn', skipEnrichment: boolean = false): Promise<LoadedSchedules> => {
+  console.time('[Schedule] buildSchedules total');
+  
   const prospectsByRank = getProspectsByRank(source);
+  
+  console.time('[Schedule] getTeamDirectory');
   const teamDirectory = await getTeamDirectory();
+  console.timeEnd('[Schedule] getTeamDirectory');
 
-  await ensureJerseyData(prospectsByRank, teamDirectory);
+  if (!skipEnrichment) {
+    console.time('[Schedule] ensureJerseyData');
+    await ensureJerseyData(prospectsByRank, teamDirectory);
+    console.timeEnd('[Schedule] ensureJerseyData');
+  } else {
+    console.log('[Schedule] Skipping jersey data for faster load');
+  }
 
   const rootDir = process.cwd();
   const files = fs.readdirSync(rootDir).filter((file) => file.endsWith(SCHEDULE_SUFFIX));
@@ -1927,35 +1948,56 @@ const buildSchedules = async (source: RankingSource = 'espn'): Promise<LoadedSch
 
   const aggregatedGames = new Map<string, AggregatedGameInternal>();
 
-  for (const file of files) {
+  // Parse all files in parallel (OPTIMIZATION: was sequential before)
+  console.time('[Schedule] parseScheduleFiles (parallel)');
+  const parsePromises = files.map(file => {
     const filePath = path.join(rootDir, file);
-    try {
-      const entries = await parseScheduleFile(filePath, prospectsByRank, teamDirectory);
+    return parseScheduleFile(filePath, prospectsByRank, teamDirectory)
+      .then(entries => ({ file, entries, error: null }))
+      .catch(error => {
+        console.error(`[Schedule] Failed to parse schedule file ${filePath}:`, error);
+        return { file, entries: [], error };
+      });
+  });
+  
+  const results = await Promise.all(parsePromises);
+  console.timeEnd('[Schedule] parseScheduleFiles (parallel)');
+  
+  // Aggregate all parsed entries
+  console.time('[Schedule] aggregateGames');
+  for (const { file, entries, error } of results) {
+    if (error) continue; // Already logged in catch block
+    
+    if (entries.length > 0) {
       console.log(`[Schedule] Parsed ${file}: ${entries.length} entries`);
+    }
 
-      for (const entry of entries) {
-        const existing = aggregatedGames.get(entry.key);
-        const merged = mergeProspectIntoGame(entry, existing);
+    for (const entry of entries) {
+      const existing = aggregatedGames.get(entry.key);
+      const merged = mergeProspectIntoGame(entry, existing);
 
-        if (existing) {
-          if (existing.locationType === 'neutral' && merged.locationType !== 'neutral') {
-            existing.locationType = merged.locationType;
-          }
-          merged.sortTimestamp =
-            merged.sortTimestamp ?? existing.sortTimestamp ?? null;
+      if (existing) {
+        if (existing.locationType === 'neutral' && merged.locationType !== 'neutral') {
+          existing.locationType = merged.locationType;
         }
-
-        aggregatedGames.set(entry.key, merged);
+        merged.sortTimestamp =
+          merged.sortTimestamp ?? existing.sortTimestamp ?? null;
       }
-    } catch (error) {
-      console.error(`[Schedule] Failed to parse schedule file ${filePath}:`, error);
-      // Continue processing other files even if one fails
+
+      aggregatedGames.set(entry.key, merged);
     }
   }
+  console.timeEnd('[Schedule] aggregateGames');
   
   console.log(`[Schedule] Total aggregated games: ${aggregatedGames.size}`);
 
-  await enrichWithBroadcasts(aggregatedGames);
+  if (!skipEnrichment) {
+    console.time('[Schedule] enrichWithBroadcasts');
+    await enrichWithBroadcasts(aggregatedGames);
+    console.timeEnd('[Schedule] enrichWithBroadcasts');
+  } else {
+    console.log('[Schedule] Skipping broadcast enrichment for faster load');
+  }
 
   const gamesByDateMap: Record<string, Map<string, GameWithProspects>> = {};
 
@@ -2043,6 +2085,8 @@ const buildSchedules = async (source: RankingSource = 'espn'): Promise<LoadedSch
     console.warn(`[Schedule] WARNING: No games loaded! Check logs above for errors.`);
   }
 
+  console.timeEnd('[Schedule] buildSchedules total');
+
   return {
     gamesByDate,
     allGames,
@@ -2066,7 +2110,15 @@ export const loadAllSchedules = async (source: RankingSource = 'espn', forceRelo
 
   buildPromises[source] = (async () => {
     try {
-      const result = await buildSchedules(source);
+      // Skip enrichment by default - ESPN API calls are too slow (10-20+ seconds)
+      // Enable only if explicitly requested via environment variable
+      const skipEnrichment = process.env.ENABLE_ENRICHMENT !== 'true';
+      
+      if (skipEnrichment) {
+        console.log('[Schedule] Skipping ESPN API enrichment for faster load (set ENABLE_ENRICHMENT=true to enable)');
+      }
+      
+      const result = await buildSchedules(source, skipEnrichment);
       cachedSchedules[source] = result;
       cacheTimestamp = Date.now();
       return result;

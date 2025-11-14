@@ -2,7 +2,7 @@
 
 'use client';
 
-import React, { useEffect, useMemo, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { resolveTeams } from '@/lib/search/resolve';
 import { resolveProspects } from '@/lib/search/resolveProspects';
 import { tokenize, plain } from '@/lib/search/tokens';

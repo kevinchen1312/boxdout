@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, memo } from 'react';
+import { useState, memo, useEffect } from 'react';
 import { GameWithProspects } from '../utils/gameMatching';
 import { format, parseISO } from 'date-fns';
 import { convertTipoffToLocal } from '../utils/timezone';
+import { useUser } from '@clerk/nextjs';
 
 export type RankingSource = 'espn' | 'myboard';
 
@@ -11,6 +12,7 @@ interface GameCardProps {
   game: GameWithProspects;
   compact?: boolean;
   rankingSource?: RankingSource;
+  onOpenNotes?: (game: GameWithProspects) => void;
 }
 
 const deriveTipoff = (game: GameWithProspects) => {
@@ -57,13 +59,92 @@ const formatGameDate = (game: GameWithProspects) => {
   }
 };
 
-const GameCard = memo(function GameCard({ game, compact = false, rankingSource = 'espn' }: GameCardProps) {
+const GameCard = memo(function GameCard({ game, compact = false, rankingSource = 'espn', onOpenNotes }: GameCardProps) {
   const [showTooltip, setShowTooltip] = useState(false);
+  const [watched, setWatched] = useState(false);
+  const [hasNote, setHasNote] = useState(false);
+  const [isTogglingWatch, setIsTogglingWatch] = useState(false);
+  const { isSignedIn } = useUser();
   const sourceLabel = rankingSource === 'myboard' ? 'myBoard' : 'ESPN';
 
   const tipoffText = deriveTipoff(game) || 'TBD';
   const matchupLabel = buildMatchupLabel(game);
   const highlightLabel = getHighlightLabel(game);
+
+  // Load watched status on mount
+  useEffect(() => {
+    if (!isSignedIn) return;
+    
+    fetch('/api/watched/list')
+      .then(res => res.json())
+      .then(data => {
+        if (data.watchedGames) {
+          const isWatched = data.watchedGames.some((w: any) => w.game_id === game.id);
+          setWatched(isWatched);
+        }
+      })
+      .catch(err => console.error('Error loading watched status:', err));
+  }, [isSignedIn, game.id]);
+
+  // Load note status
+  useEffect(() => {
+    if (!isSignedIn) return;
+    
+    fetch(`/api/notes/get?gameId=${game.id}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.notes && data.notes.length > 0) {
+          const userNote = data.notes.find((n: any) => n.isOwn);
+          setHasNote(!!userNote);
+        }
+      })
+      .catch(err => console.error('Error loading note status:', err));
+  }, [isSignedIn, game.id]);
+
+  const handleToggleWatch = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isSignedIn || isTogglingWatch) return;
+    
+    setIsTogglingWatch(true);
+    
+    // Optimistically update the UI
+    const newWatchedState = !watched;
+    setWatched(newWatchedState);
+    
+    try {
+      const response = await fetch('/api/watched/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          gameId: game.id,
+          gameDate: game.dateKey || game.date.substring(0, 10),
+        }),
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        // Confirm with server response
+        setWatched(data.watched);
+      } else {
+        // Revert on error
+        console.error('Error toggling watch:', data);
+        setWatched(!newWatchedState);
+      }
+    } catch (err) {
+      console.error('Error toggling watch:', err);
+      // Revert on error
+      setWatched(!newWatchedState);
+    } finally {
+      setIsTogglingWatch(false);
+    }
+  };
+
+  const handleOpenNotes = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onOpenNotes) {
+      onOpenNotes(game);
+    }
+  };
 
   if (compact) {
     return (
@@ -117,19 +198,19 @@ const GameCard = memo(function GameCard({ game, compact = false, rankingSource =
   const homeLogo = getTeamLogo(game.homeTeam);
 
   return (
-    <div id={`game-${game.id}`} className="game-row w-full bg-white">
+    <div id={`game-${game.id}`} className="game-row w-full bg-white" style={{ position: 'relative' }}>
       {/* Time and Network - top left and top right */}
-      <div className="flex items-center justify-between px-[10px] pt-3 pb-2">
-        <span className="text-sm font-medium text-gray-900 text-left">{tipoffText}</span>
-        {game.tv && (
-          <span className="text-sm font-medium text-gray-700 text-right">
+      <div className="flex items-center justify-between px-[10px] pt-3 pb-2 gap-2">
+        <span className="text-sm font-medium text-gray-900 text-left max-w-[120px] truncate">{tipoffText}</span>
+        {game.tv && game.tv !== 'TBA' && (
+          <span className="text-sm font-medium text-gray-700 text-right max-w-[120px] truncate">
             {game.tv}
           </span>
         )}
       </div>
 
       {/* School logos side-by-side, centered */}
-      <div className="flex items-center justify-center gap-3 px-4 pb-3">
+      <div className="flex items-center justify-center gap-3 px-4 pb-12">
         {/* Away Team */}
         <div className="flex-1 flex flex-col items-center justify-center text-center">
           {awayLogo ? (
@@ -216,6 +297,75 @@ const GameCard = memo(function GameCard({ game, compact = false, rankingSource =
           </div>
         </div>
       </div>
+
+      {/* Action buttons - bottom right */}
+      {isSignedIn && (
+        <div 
+          style={{
+            position: 'absolute',
+            bottom: '8px',
+            right: '8px',
+            display: 'flex',
+            gap: '6px',
+            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+            padding: '4px',
+            borderRadius: '6px',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+            zIndex: 10,
+          }}
+        >
+          {/* Eye icon for watched status */}
+          <button
+            onClick={handleToggleWatch}
+            disabled={isTogglingWatch}
+            style={{
+              padding: '4px',
+              border: 'none',
+              background: 'transparent',
+              cursor: 'pointer',
+              borderRadius: '4px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+            title={watched ? 'Mark as unwatched' : 'Mark as watched'}
+            aria-label={watched ? 'Mark as unwatched' : 'Mark as watched'}
+          >
+            <svg 
+              width="20" 
+              height="20" 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke={watched ? '#16a34a' : '#6b7280'}
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
+          {/* Compose icon for notes */}
+          <button
+            onClick={handleOpenNotes}
+            style={{
+              padding: '4px',
+              border: 'none',
+              background: 'transparent',
+              cursor: 'pointer',
+              borderRadius: '4px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: hasNote ? '#ea580c' : '#6b7280',
+            }}
+            title={hasNote ? 'Edit note' : 'Add note'}
+            aria-label={hasNote ? 'Edit note' : 'Add note'}
+          >
+            ✏️
+          </button>
+        </div>
+      )}
     </div>
   );
 });

@@ -5,7 +5,7 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
-  --cal-bw: 1px;
+  --cal-bw: 1.5px;
   --cal-bc: #222;
   --cal-bg: #fff;
 }
@@ -93,6 +93,7 @@ body {
 }
 
 /* DAY BOX — this is the only outer border for that day */
+/* All borders explicitly set to same thickness to ensure consistency */
 .day-table {
   border: var(--cal-bw) solid var(--cal-bc);
   box-sizing: border-box;
@@ -108,13 +109,6 @@ body {
 }
 
 .day-table .game-row + .game-row {
-  border-top: var(--cal-bw) solid var(--cal-bc);
-}
-
-/* Side-locked GameRow layout - never swaps sides */
-.game-entry {
-  border-left: var(--cal-bw) solid var(--cal-bc);
-  border-right: var(--cal-bw) solid var(--cal-bc);
   border-top: var(--cal-bw) solid var(--cal-bc);
 }
 
