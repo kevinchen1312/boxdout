@@ -158,6 +158,56 @@ export default function SearchImportPlayer({ onPlayerImported, existingRankings 
       // Success
       setSuccess(`Added ${body.prospect.full_name} to your board at #${body.rank}. Their games are being synced.`);
       
+      // Dispatch playerAdded event to trigger instant game fetching
+      // This ensures games appear immediately without full page reload
+      if (typeof window !== 'undefined') {
+        // Create canonical player ID (same logic as in rankings page)
+        const createCanonicalPlayerId = (name: string, team: string, teamDisplay?: string): string => {
+          const normalizedName = (name || '').toLowerCase().trim().replace(/\s+/g, ' ');
+          const teamToUse = (teamDisplay || team || '').trim();
+          let normalizedTeam = teamToUse
+            .toLowerCase()
+            .trim()
+            .replace(/\s*\([^)]*\)/g, '')
+            .replace(/\s+(basket|basketball|club|bc)$/i, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+          if (normalizedTeam.includes('partizan') || normalizedTeam.includes('mozzart')) {
+            normalizedTeam = 'partizan';
+          }
+          return `${normalizedName}|${normalizedTeam}`;
+        };
+        
+        const playerId = createCanonicalPlayerId(
+          body.prospect.full_name,
+          player.team || body.prospect.team_name || '',
+          player.team || body.prospect.team_name || ''
+        );
+        
+        console.log(`[SearchImportPlayer] Dispatching playerAdded event for ${body.prospect.full_name} (${playerId})`);
+        
+        // Store in localStorage as backup (works across pages/routes)
+        try {
+          localStorage.setItem('playerAdded', JSON.stringify({
+            playerId,
+            playerName: body.prospect.full_name,
+            playerTeam: player.team || body.prospect.team_name || '',
+            timestamp: Date.now(),
+          }));
+        } catch (err) {
+          console.warn('[SearchImportPlayer] Failed to store in localStorage:', err);
+        }
+        
+        window.dispatchEvent(new CustomEvent('playerAdded', {
+          detail: { 
+            playerId,
+            playerName: body.prospect.full_name,
+            playerTeam: player.team || body.prospect.team_name || '',
+            type: 'watchlist'
+          }
+        }));
+      }
+      
       // Clear search and reload
       setSearchQuery('');
       setResults([]);

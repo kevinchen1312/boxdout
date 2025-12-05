@@ -657,6 +657,23 @@ export default function RankingsPage() {
   const clamp = (value: number, min: number, max: number) =>
     Math.min(Math.max(value, min), max);
 
+  // Helper function to create canonical player ID (same as in lib/trackedPlayers.ts)
+  const createCanonicalPlayerId = useCallback((name: string, team: string, teamDisplay?: string): string => {
+    const normalizedName = (name || '').toLowerCase().trim().replace(/\s+/g, ' ');
+    const teamToUse = (teamDisplay || team || '').trim();
+    let normalizedTeam = teamToUse
+      .toLowerCase()
+      .trim()
+      .replace(/\s*\([^)]*\)/g, '')
+      .replace(/\s+(basket|basketball|club|bc)$/i, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (normalizedTeam.includes('partizan') || normalizedTeam.includes('mozzart')) {
+      normalizedTeam = 'partizan';
+    }
+    return `${normalizedName}|${normalizedTeam}`;
+  }, []);
+
   // Big board → Watchlist (true move: remove from big board, add to watchlist)
   // Helper function to build rankings data and dispatch instant update
   // If newBigBoard/newWatchlist are provided, use those; otherwise use refs (latest state)
@@ -765,6 +782,19 @@ export default function RankingsPage() {
       // Dispatch instant update with new state
       setTimeout(() => {
         dispatchRankingsUpdate(newBigBoard, newWatchlist);
+        
+        // INSTANT ADD: Dispatch event to add player's games to cache
+        if (typeof window !== 'undefined') {
+          const playerId = createCanonicalPlayerId(prospect.name, prospect.team || '', prospect.teamDisplay || '');
+          window.dispatchEvent(new CustomEvent('playerAdded', {
+            detail: { 
+              playerId,
+              playerName: prospect.name,
+              playerTeam: prospect.team || prospect.teamDisplay || '',
+              type: 'watchlist'
+            }
+          }));
+        }
       }, 0);
       
       return newWatchlist;
@@ -1084,7 +1114,23 @@ export default function RankingsPage() {
         const body = await response.json().catch(() => ({}));
         throw new Error(body.error || 'Failed to delete player');
       }
-      await loadUserRankings();
+      
+      // Find the prospect to get name/team for playerId
+      const prospect = watchlistProspects.find(p => p.id === prospectId || p.originalProspectId === prospectId);
+      
+      // INSTANT REMOVAL: Dispatch event to remove player's games from cache
+      if (typeof window !== 'undefined' && prospect) {
+        const playerId = createCanonicalPlayerId(prospect.name, prospect.team || '', prospect.teamDisplay || '');
+        window.dispatchEvent(new CustomEvent('playerRemoved', {
+          detail: { 
+            playerId,
+            playerName: prospect.name,
+            type: 'watchlist'
+          }
+        }));
+      }
+      
+      await loadUserRankings(); // Reload watchlist state
       setSuccessMessage('Player removed from watchlist!');
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {
@@ -1215,14 +1261,35 @@ export default function RankingsPage() {
     }
 
     try {
+      let updatedBigBoard: Prospect[] = [];
+      
       setBigBoardProspects((items) => {
         const filtered = items.filter((item) => item.id !== prospect.id);
         // Update ranks
-        return filtered.map((item, index) => ({
+        updatedBigBoard = filtered.map((item, index) => ({
           ...item,
           rank: index + 1,
         }));
+        return updatedBigBoard;
       });
+      
+      // INSTANT UPDATE: Dispatch rankings update so other players' ranks update immediately
+      setTimeout(() => {
+        dispatchRankingsUpdate(updatedBigBoard);
+      }, 0);
+      
+      // INSTANT REMOVAL: Dispatch event to remove player's games from cache
+      if (typeof window !== 'undefined') {
+        const playerId = createCanonicalPlayerId(prospect.name, prospect.team || '', prospect.teamDisplay || '');
+        window.dispatchEvent(new CustomEvent('playerRemoved', {
+          detail: { 
+            playerId,
+            playerName: prospect.name,
+            type: 'bigBoard'
+          }
+        }));
+      }
+      
       setSuccessMessage(`Removed ${prospect.name} from big board!`);
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err) {

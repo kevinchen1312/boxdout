@@ -59,6 +59,56 @@ export default function AddCustomPlayerForm({ onPlayerAdded, onCancel, existingR
       const data = await response.json();
       setSuccess(true);
       
+      // Dispatch playerAdded event to trigger instant game fetching
+      // This ensures games appear immediately without full page reload
+      if (typeof window !== 'undefined') {
+        // Create canonical player ID (same logic as in rankings page)
+        const createCanonicalPlayerId = (name: string, team: string, teamDisplay?: string): string => {
+          const normalizedName = (name || '').toLowerCase().trim().replace(/\s+/g, ' ');
+          const teamToUse = (teamDisplay || team || '').trim();
+          let normalizedTeam = teamToUse
+            .toLowerCase()
+            .trim()
+            .replace(/\s*\([^)]*\)/g, '')
+            .replace(/\s+(basket|basketball|club|bc)$/i, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+          if (normalizedTeam.includes('partizan') || normalizedTeam.includes('mozzart')) {
+            normalizedTeam = 'partizan';
+          }
+          return `${normalizedName}|${normalizedTeam}`;
+        };
+        
+        const playerId = createCanonicalPlayerId(
+          data.prospect.full_name,
+          team.trim(),
+          team.trim()
+        );
+        
+        console.log(`[AddCustomPlayerForm] Dispatching playerAdded event for ${data.prospect.full_name} (${playerId})`);
+        
+        // Store in localStorage as backup (works across pages/routes)
+        try {
+          localStorage.setItem('playerAdded', JSON.stringify({
+            playerId,
+            playerName: data.prospect.full_name,
+            playerTeam: team.trim(),
+            timestamp: Date.now(),
+          }));
+        } catch (err) {
+          console.warn('[AddCustomPlayerForm] Failed to store in localStorage:', err);
+        }
+        
+        window.dispatchEvent(new CustomEvent('playerAdded', {
+          detail: { 
+            playerId,
+            playerName: data.prospect.full_name,
+            playerTeam: team.trim(),
+            type: 'watchlist'
+          }
+        }));
+      }
+      
       // Reset form
       setName('');
       setPosition('');

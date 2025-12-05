@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
+import GlobalPlayerEventListeners from "./components/GlobalPlayerEventListeners";
 
 export const metadata: Metadata = {
   title: "2026 NBA Draft Prospects Calendar",
@@ -16,6 +17,7 @@ export default function RootLayout({
     <ClerkProvider>
       <html lang="en">
         <body className="antialiased">
+          <GlobalPlayerEventListeners />
           {children}
         </body>
       </html>

@@ -233,9 +233,16 @@ export function useGames(options: UseGamesOptions = {}) {
           isWatchlist: prospect.isWatchlist || false,
         };
         
-        // Create key with team
+        // Create key with team (normalized)
         const key = createMatchKey(name, team);
         rankMap.set(key, rankData);
+        
+        // Also add entry keyed by lowercase version (for playerId matching)
+        // This ensures tracked players can match by their playerId field
+        const normalizedKey = key.toLowerCase();
+        if (normalizedKey !== key) {
+          rankMap.set(normalizedKey, rankData);
+        }
         
         // Debug: Log Dash Daniels specifically
         if (name.toLowerCase().includes('dash')) {
@@ -301,11 +308,55 @@ export function useGames(options: UseGamesOptions = {}) {
             const updatedHomeProspects = game.homeProspects.map(updateProspectRank);
             const updatedAwayProspects = game.awayProspects.map(updateProspectRank);
             
+            // CRITICAL: Also update tracked players arrays (used by GameCard for "Watchlist" vs "myBoard X")
+            const updateTrackedPlayer = (player: any) => {
+              // Tracked players have a playerId field (canonical ID: name|team)
+              // Match by playerId first, then fall back to name+team matching
+              const playerId = player.playerId || '';
+              const name = (player.playerName || player.name || '').trim().toLowerCase();
+              const team = (player.team || player.teamDisplay || '').trim();
+              
+              // Try matching by playerId first (most reliable)
+              let rankInfo = playerId ? rankMap.get(playerId.toLowerCase()) : undefined;
+              
+              // If not found by playerId, try matching by name+team
+              if (!rankInfo) {
+                let key = createMatchKey(name, team);
+                rankInfo = rankMap.get(key);
+                
+                // If still not found, try name-only match (more forgiving)
+                if (!rankInfo) {
+                  for (const [mapKey, info] of rankMap.entries()) {
+                    if (mapKey.startsWith(`${name}|`)) {
+                      rankInfo = info;
+                      break;
+                    }
+                  }
+                }
+              }
+              
+              if (rankInfo !== undefined) {
+                // Update tracked player with new rank and watchlist status
+                return {
+                  ...player,
+                  rank: rankInfo.rank,
+                  type: rankInfo.isWatchlist ? 'watchlist' : 'myBoard',
+                };
+              }
+              
+              return player;
+            };
+            
+            const updatedHomeTracked = (game.homeTrackedPlayers || []).map(updateTrackedPlayer);
+            const updatedAwayTracked = (game.awayTrackedPlayers || []).map(updateTrackedPlayer);
+            
             return {
               ...game,
               prospects: updatedProspects,
               homeProspects: updatedHomeProspects,
               awayProspects: updatedAwayProspects,
+              homeTrackedPlayers: updatedHomeTracked,
+              awayTrackedPlayers: updatedAwayTracked,
             };
           });
         }
@@ -373,11 +424,45 @@ export function useGames(options: UseGamesOptions = {}) {
             // Update awayProspects with new ranks
             const updatedAwayProspects = game.awayProspects.map(updateProspectRank);
             
+            // CRITICAL: Also update tracked players arrays (used by GameCard for "Watchlist" vs "myBoard X")
+            const updateTrackedPlayer = (player: any) => {
+              // Tracked players have a playerId field (canonical ID: name|team)
+              // Match by playerId first, then fall back to name+team matching
+              const playerId = player.playerId || '';
+              const name = (player.playerName || player.name || '').trim().toLowerCase();
+              const team = (player.team || player.teamDisplay || '').trim();
+              
+              // Try matching by playerId first (most reliable)
+              let rankInfo = playerId ? rankMap.get(playerId.toLowerCase()) : undefined;
+              
+              // If not found by playerId, try matching by name+team
+              if (!rankInfo) {
+                const key = `${name}|${team.toLowerCase()}`;
+                rankInfo = rankMap.get(key);
+              }
+              
+              if (rankInfo !== undefined) {
+                // Update tracked player with new rank and watchlist status
+                return {
+                  ...player,
+                  rank: rankInfo.rank,
+                  type: rankInfo.isWatchlist ? 'watchlist' : 'myBoard',
+                };
+              }
+              
+              return player;
+            };
+            
+            const updatedHomeTracked = (game.homeTrackedPlayers || []).map(updateTrackedPlayer);
+            const updatedAwayTracked = (game.awayTrackedPlayers || []).map(updateTrackedPlayer);
+            
             return {
               ...game,
               prospects: updatedProspects,
               homeProspects: updatedHomeProspects,
               awayProspects: updatedAwayProspects,
+              homeTrackedPlayers: updatedHomeTracked,
+              awayTrackedPlayers: updatedAwayTracked,
             };
           });
         }
@@ -463,6 +548,241 @@ export function useGames(options: UseGamesOptions = {}) {
       clearInterval(refreshInterval);
     };
   }, [games, loading, source]);
+
+  // Remove a tracked player from all games and remove games with no tracked players
+  const removeTrackedPlayer = useCallback((playerId: string, playerName: string) => {
+    // Helper to create canonical player ID (same as in lib/trackedPlayers.ts)
+    const createCanonicalPlayerId = (name: string, team: string, teamDisplay?: string): string => {
+      const normalizedName = (name || '').toLowerCase().trim().replace(/\s+/g, ' ');
+      const teamToUse = (teamDisplay || team || '').trim();
+      let normalizedTeam = teamToUse
+        .toLowerCase()
+        .trim()
+        .replace(/\s*\([^)]*\)/g, '')
+        .replace(/\s+(basket|basketball|club|bc)$/i, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (normalizedTeam.includes('partizan') || normalizedTeam.includes('mozzart')) {
+        normalizedTeam = 'partizan';
+      }
+      return `${normalizedName}|${normalizedTeam}`;
+    };
+
+    setGames((prevGames) => {
+      const updatedGames: GamesByDate = {};
+      let removedGameCount = 0;
+      
+      for (const [dateKey, gamesForDate] of Object.entries(prevGames)) {
+        updatedGames[dateKey] = gamesForDate
+          .map(game => {
+            // Remove player from tracked players arrays
+            const newHomeTracked = (game.homeTrackedPlayers || [])
+              .filter(p => p.playerId !== playerId);
+            const newAwayTracked = (game.awayTrackedPlayers || [])
+              .filter(p => p.playerId !== playerId);
+            
+            // Also remove from old prospect arrays for backward compatibility
+            const newHomeProspects = (game.homeProspects || [])
+              .filter(p => {
+                const prospectId = createCanonicalPlayerId(p.name, p.team || '', p.teamDisplay);
+                return prospectId !== playerId;
+              });
+            const newAwayProspects = (game.awayProspects || [])
+              .filter(p => {
+                const prospectId = createCanonicalPlayerId(p.name, p.team || '', p.teamDisplay);
+                return prospectId !== playerId;
+              });
+            const newProspects = (game.prospects || [])
+              .filter(p => {
+                const prospectId = createCanonicalPlayerId(p.name, p.team || '', p.teamDisplay);
+                return prospectId !== playerId;
+              });
+            
+            return {
+              ...game,
+              homeTrackedPlayers: newHomeTracked,
+              awayTrackedPlayers: newAwayTracked,
+              homeProspects: newHomeProspects,
+              awayProspects: newAwayProspects,
+              prospects: newProspects,
+            };
+          })
+          .filter(game => {
+            // Remove games with no tracked players
+            const hasTrackedPlayers = 
+              (game.homeTrackedPlayers?.length || 0) > 0 ||
+              (game.awayTrackedPlayers?.length || 0) > 0 ||
+              (game.prospects?.length || 0) > 0;
+            if (!hasTrackedPlayers) removedGameCount++;
+            return hasTrackedPlayers;
+          });
+      }
+      
+      console.log(`[useGames] Removed ${playerName} from games, removed ${removedGameCount} empty gamecards`);
+      return updatedGames;
+    });
+  }, []);
+
+  // Add games for a new watchlist player
+  const addWatchlistGames = useCallback(async (prospectId: string, prospectName: string, prospectTeam: string) => {
+    try {
+      console.log(`[useGames] Fetching games for new watchlist player: ${prospectName} (ID: ${prospectId}, Team: ${prospectTeam})`);
+      
+      // Fetch only this prospect's games
+      const url = `/api/games/prospects?prospectIds=${encodeURIComponent(prospectId)}&source=${source}`;
+      console.log(`[useGames] Calling: ${url}`);
+      
+      const response = await fetch(url, {
+        cache: 'no-store',
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.error(`[useGames] Failed to fetch prospect games: ${response.status} ${response.statusText}`, errorText);
+        throw new Error(`Failed to fetch prospect games: ${response.status}`);
+      }
+      
+      const newGamesData = await response.json();
+      const newGames: GamesByDate = newGamesData.games || {};
+      
+      const totalNewGames = Object.values(newGames).flat().length;
+      console.log(`[useGames] Received ${totalNewGames} games across ${Object.keys(newGames).length} dates for ${prospectName}`);
+      
+      if (totalNewGames === 0) {
+        console.warn(`[useGames] ⚠️ No games found for ${prospectName} (${prospectTeam}). This might be because:`);
+        console.warn(`[useGames]   1. Games aren't loaded yet in loadAllSchedules`);
+        console.warn(`[useGames]   2. Team name matching failed (looking for: "${prospectTeam}")`);
+        console.warn(`[useGames]   3. Games exist but player isn't decorated yet`);
+      }
+      
+      // Merge into existing cache
+      setGames((prevGames) => {
+        const merged: GamesByDate = { ...prevGames };
+        let totalMerged = 0;
+        
+        for (const [dateKey, gamesForDate] of Object.entries(newGames)) {
+          if (!merged[dateKey]) {
+            merged[dateKey] = [];
+          }
+          
+          // Add new games, avoiding duplicates
+          const existingIds = new Set(merged[dateKey].map(g => g.id));
+          const uniqueNewGames = gamesForDate.filter(g => !existingIds.has(g.id));
+          merged[dateKey] = [...merged[dateKey], ...uniqueNewGames];
+          totalMerged += uniqueNewGames.length;
+        }
+        
+        console.log(`[useGames] ✓ Merged ${totalMerged} new games for ${prospectName} (${totalNewGames - totalMerged} were duplicates)`);
+        return merged;
+      });
+      
+      // Re-decorate all games with updated tracked players (to show new player on existing games)
+      // This will happen automatically on next rankings update, or we can trigger it here
+    } catch (err) {
+      console.error('[useGames] Error adding watchlist games:', err);
+    }
+  }, [source]);
+
+  // Listen for player add/remove events (backup - global listener also handles this)
+  useEffect(() => {
+    const handlePlayerRemoved = (e: CustomEvent) => {
+      const { playerId, playerName } = e.detail;
+      console.log(`[useGames] Player removed event: ${playerName} (${playerId})`);
+      removeTrackedPlayer(playerId, playerName);
+    };
+    
+    const handlePlayerAdded = (e: CustomEvent) => {
+      const { playerId, playerName, playerTeam } = e.detail;
+      console.log(`[useGames] Player added event: ${playerName} (${playerId})`);
+      addWatchlistGames(playerId, playerName, playerTeam);
+    };
+    
+    // Also listen for cache updates from global listener
+    const handleGamesCacheUpdated = (e: CustomEvent) => {
+      // CRITICAL: Read from cache directly, don't trust event detail (might be stale)
+      const cacheKey = `games_all_${source}`;
+      const cachedGames = getCachedData<GamesByDate>(cacheKey);
+      
+      if (cachedGames) {
+        console.log(`[useGames] Cache updated event received, reading from cache: ${Object.values(cachedGames).flat().length} games`);
+        setGames(cachedGames);
+      } else if (e.detail?.games) {
+        // Fallback: use event detail if cache read fails
+        console.log(`[useGames] Cache updated event received, using event detail: ${Object.values(e.detail.games).flat().length} games`);
+        setGames(e.detail.games);
+      } else {
+        console.warn('[useGames] Cache updated event received but no games found in cache or event');
+      }
+    };
+    
+    // Also poll localStorage for playerAdded/playerRemoved events (backup for cross-page)
+    // This ensures we catch events even if dispatched before this hook mounts
+    const checkForPlayerEvents = () => {
+      try {
+        const playerAdded = localStorage.getItem('playerAdded');
+        const playerRemoved = localStorage.getItem('playerRemoved');
+        
+        if (playerAdded) {
+          const data = JSON.parse(playerAdded);
+          const { playerId, playerName, playerTeam, timestamp } = data;
+          // Only process if event is recent (within last 5 seconds)
+          if (timestamp && Date.now() - timestamp < 5000) {
+            console.log(`[useGames] Found recent playerAdded in localStorage: ${playerName}`);
+            localStorage.removeItem('playerAdded');
+            // Trigger global listener by dispatching event
+            window.dispatchEvent(new CustomEvent('playerAdded', {
+              detail: { playerId, playerName, playerTeam, type: 'watchlist' }
+            }));
+          } else if (!timestamp) {
+            // Old format, process anyway
+            console.log(`[useGames] Found playerAdded in localStorage (old format): ${playerName}`);
+            localStorage.removeItem('playerAdded');
+            window.dispatchEvent(new CustomEvent('playerAdded', {
+              detail: { playerId, playerName, playerTeam, type: 'watchlist' }
+            }));
+          }
+        }
+        
+        if (playerRemoved) {
+          const data = JSON.parse(playerRemoved);
+          const { playerId, playerName, timestamp } = data;
+          // Only process if event is recent (within last 5 seconds)
+          if (timestamp && Date.now() - timestamp < 5000) {
+            console.log(`[useGames] Found recent playerRemoved in localStorage: ${playerName}`);
+            localStorage.removeItem('playerRemoved');
+            // Trigger global listener by dispatching event
+            window.dispatchEvent(new CustomEvent('playerRemoved', {
+              detail: { playerId, playerName, type: 'watchlist' }
+            }));
+          } else if (!timestamp) {
+            // Old format, process anyway
+            console.log(`[useGames] Found playerRemoved in localStorage (old format): ${playerName}`);
+            localStorage.removeItem('playerRemoved');
+            window.dispatchEvent(new CustomEvent('playerRemoved', {
+              detail: { playerId, playerName, type: 'watchlist' }
+            }));
+          }
+        }
+      } catch (err) {
+        // Ignore errors
+      }
+    };
+    
+    // Check immediately and set up polling
+    checkForPlayerEvents();
+    const pollInterval = setInterval(checkForPlayerEvents, 500); // Check every 500ms
+    
+    window.addEventListener('playerRemoved', handlePlayerRemoved as EventListener);
+    window.addEventListener('playerAdded', handlePlayerAdded as EventListener);
+    window.addEventListener('gamesCacheUpdated', handleGamesCacheUpdated as EventListener);
+    
+    return () => {
+      window.removeEventListener('playerRemoved', handlePlayerRemoved as EventListener);
+      window.removeEventListener('playerAdded', handlePlayerAdded as EventListener);
+      window.removeEventListener('gamesCacheUpdated', handleGamesCacheUpdated as EventListener);
+      clearInterval(pollInterval);
+    };
+  }, [removeTrackedPlayer, addWatchlistGames]);
 
   return { games, loading, error, loadingMessage, updating, fetchGames, refresh, updateProspectRanks, source };
 }
