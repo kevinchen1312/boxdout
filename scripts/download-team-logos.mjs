@@ -219,3 +219,8 @@ if (priorityTeams.length > 0) {
 
 console.log('\n');
 
+
+
+
+
+

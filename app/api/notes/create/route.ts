@@ -33,55 +33,25 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Check if note already exists
-    const { data: existingNote } = await supabaseAdmin
+    // Always create a new note (allow multiple notes per game)
+    const { data, error } = await supabaseAdmin
       .from('notes')
-      .select('id')
-      .eq('user_id', userData.id)
-      .eq('game_id', gameId)
+      .insert({
+        user_id: userData.id,
+        game_id: gameId,
+        content,
+        visibility: visibility || 'self',
+        group_id: groupId || null,
+      })
+      .select()
       .single();
 
-    if (existingNote) {
-      // Update existing note
-      const { data, error } = await supabaseAdmin
-        .from('notes')
-        .update({
-          content,
-          visibility: visibility || 'self',
-          group_id: groupId || null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', existingNote.id)
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Supabase update error:', error);
-        return NextResponse.json({ error: 'Failed to update note' }, { status: 500 });
-      }
-
-      return NextResponse.json({ note: data });
-    } else {
-      // Create new note
-      const { data, error } = await supabaseAdmin
-        .from('notes')
-        .insert({
-          user_id: userData.id,
-          game_id: gameId,
-          content,
-          visibility: visibility || 'self',
-          group_id: groupId || null,
-        })
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Supabase insert error:', error);
-        return NextResponse.json({ error: 'Failed to create note' }, { status: 500 });
-      }
-
-      return NextResponse.json({ note: data });
+    if (error) {
+      console.error('Supabase insert error:', error);
+      return NextResponse.json({ error: 'Failed to create note' }, { status: 500 });
     }
+
+    return NextResponse.json({ note: data });
   } catch (error) {
     console.error('Error creating/updating note:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

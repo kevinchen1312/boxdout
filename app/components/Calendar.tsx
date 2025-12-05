@@ -16,9 +16,10 @@ interface CalendarProps {
   selectedDate?: Date;
   rankingSource?: RankingSource;
   onOpenNotes?: (game: GameWithProspects) => void;
+  gameStatuses?: Map<string, { watched: boolean; hasNote: boolean }>;
 }
 
-const Calendar = memo(function Calendar({ games, onDateChange, selectedDate, rankingSource = 'espn', onOpenNotes }: CalendarProps) {
+const Calendar = memo(function Calendar({ games, onDateChange, selectedDate, rankingSource = 'espn', onOpenNotes, gameStatuses }: CalendarProps) {
   const displayDate = selectedDate ? toLocalMidnight(selectedDate) : toLocalMidnight(new Date());
   const dateKey = localYMD(displayDate);
   
@@ -39,8 +40,8 @@ const Calendar = memo(function Calendar({ games, onDateChange, selectedDate, ran
   }, [selectedDate, onDateChange]);
 
   return (
-    <div className="w-[60vw] mx-auto">
-      <DayTable date={displayDate} games={gamesForDay} rankingSource={rankingSource} onOpenNotes={onOpenNotes} />
+    <div className="w-full">
+      <DayTable date={displayDate} games={gamesForDay} rankingSource={rankingSource} onOpenNotes={onOpenNotes} gameStatuses={gameStatuses} />
     </div>
   );
 });

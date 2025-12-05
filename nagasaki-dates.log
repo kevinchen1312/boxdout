@@ -1,0 +1,122 @@
+﻿[dotenv@17.2.3] injecting env (9) from .env.local -- tip: ≡ƒæÑ sync secrets across teammates & machines: https://dotenvx.com/ops
+≡ƒôà Checking Nagasaki game dates...
+
+node.exe : (node:35928) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type 
+of file:///C:/Users/ucric/prospectcal/scripts/check-nagasaki-dates.ts is 
+not specified and it doesn't parse as CommonJS.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ((node:35928) [M...se as Common 
+   JS.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Reparsing as ES module because module syntax was detected. This incurs a 
+performance overhead.
+To eliminate this warning, add "type": "module" to 
+C:\Users\ucric\prospectcal\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+Γ£à Found: Nagasaki
+
+Total games: 120
+
+Games by month:
+
+2024-10: 9 games
+  2024-10-04: Nagasaki vs Sun Rockers Shibuya
+  2024-10-05: Nagasaki vs Sun Rockers Shibuya
+  2024-10-12: Hokkaido vs Nagasaki
+
+2024-11: 5 games
+  2024-11-02: Nagasaki vs Diamond Dolphins
+  2024-11-03: Nagasaki vs Diamond Dolphins
+  2024-11-06: Koshigaya Alphas vs Nagasaki
+
+2024-12: 12 games
+  2024-12-01: Saga vs Nagasaki
+  2024-12-02: Saga vs Nagasaki
+  2024-12-07: Nagasaki vs Alvark
+
+2025-01: 7 games
+  2025-01-04: Nagasaki vs Yokohama
+  2025-01-05: Nagasaki vs Yokohama
+  2025-01-10: Hiroshima D. vs Nagasaki
+
+2025-02: 4 games
+  2025-02-01: Nagasaki vs Shimane
+  2025-02-02: Nagasaki vs Shimane
+  2025-02-08: Nagoya Fighting Eagles vs Nagasaki
+
+2025-03: 10 games
+  2025-03-01: Nagasaki vs Ryukyu
+  2025-03-02: Nagasaki vs Ryukyu
+  2025-03-05: Saga vs Nagasaki
+
+2025-04: 11 games
+  2025-04-05: NeoPhoenix vs Nagasaki
+  2025-04-06: NeoPhoenix vs Nagasaki
+  2025-04-09: Shimane vs Nagasaki
+
+2025-05: 2 games
+  2025-05-03: Osaka vs Nagasaki
+  2025-05-04: Osaka vs Nagasaki
+
+2025-10: 10 games
+  2025-10-04: Altiri Chiba vs Nagasaki
+  2025-10-05: Altiri Chiba vs Nagasaki
+  2025-10-10: Nagasaki vs Saga
+
+2025-11: 8 games
+  2025-11-01: Brave Thunders vs Nagasaki
+  2025-11-02: Brave Thunders vs Nagasaki
+  2025-11-05: Nagasaki vs Osaka
+
+2025-12: 10 games
+  2025-12-06: Nagasaki vs Koshigaya Alphas
+  2025-12-07: Nagasaki vs Koshigaya Alphas
+  2025-12-10: Hiroshima D. vs Nagasaki
+
+2026-01: 6 games
+  2026-01-03: Nagasaki vs Yokohama
+  2026-01-04: Nagasaki vs Yokohama
+  2026-01-24: NeoPhoenix vs Nagasaki
+
+2026-02: 5 games
+  2026-02-01: Nagasaki vs Hiroshima D.
+  2026-02-07: Utsunomiya Brex vs Nagasaki
+  2026-02-08: Utsunomiya Brex vs Nagasaki
+
+2026-03: 7 games
+  2026-03-07: Nagasaki vs Alvark
+  2026-03-08: Nagasaki vs Alvark
+  2026-03-11: Kyoto vs Nagasaki
+
+2026-04: 12 games
+  2026-04-01: Osaka vs Nagasaki
+  2026-04-04: Nagasaki vs Nagoya Fighting Eagles
+  2026-04-05: Nagasaki vs Nagoya Fighting Eagles
+
+2026-05: 2 games
+  2026-05-02: Nagasaki vs Kyoto
+  2026-05-03: Nagasaki vs Kyoto
+
+
+≡ƒöì December 2025 games:
+  2025-12-06: Nagasaki vs Koshigaya Alphas (Not Started)
+  2025-12-07: Nagasaki vs Koshigaya Alphas (Not Started)
+  2025-12-10: Hiroshima D. vs Nagasaki (Not Started)
+  2025-12-13: Shiga vs Nagasaki (Not Started)
+  2025-12-14: Shiga vs Nagasaki (Not Started)
+  2025-12-20: Nagasaki vs Sun Rockers Shibuya (Not Started)
+  2025-12-21: Nagasaki vs Sun Rockers Shibuya (Not Started)
+  2025-12-24: Shimane vs Nagasaki (Not Started)
+  2025-12-27: Nagasaki vs Chiba (Not Started)
+  2025-12-28: Nagasaki vs Chiba (Not Started)
+
+
+≡ƒôì Next upcoming games:
+  2025-12-06: Nagasaki vs Koshigaya Alphas
+  2025-12-07: Nagasaki vs Koshigaya Alphas
+  2025-12-10: Hiroshima D. vs Nagasaki
+  2025-12-13: Shiga vs Nagasaki
+  2025-12-14: Shiga vs Nagasaki

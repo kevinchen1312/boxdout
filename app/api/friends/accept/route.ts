@@ -1,5 +1,5 @@
 import { auth } from '@clerk/nextjs/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     }
 
     // Get user's Supabase ID
-    const { data: userData, error: userError } = await supabase
+    const { data: userData, error: userError } = await supabaseAdmin
       .from('users')
       .select('id')
       .eq('clerk_user_id', userId)
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     }
 
     // Get friend request
-    const { data: request, error: requestError } = await supabase
+    const { data: request, error: requestError } = await supabaseAdmin
       .from('friend_requests')
       .select('sender_id, receiver_id, status')
       .eq('id', requestId)
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
     }
 
     // Update request status
-    const { error: updateError } = await supabase
+    const { error: updateError } = await supabaseAdmin
       .from('friend_requests')
       .update({ status: 'accepted' })
       .eq('id', requestId);
@@ -57,7 +57,7 @@ export async function POST(req: Request) {
     const user1_id = request.sender_id < request.receiver_id ? request.sender_id : request.receiver_id;
     const user2_id = request.sender_id < request.receiver_id ? request.receiver_id : request.sender_id;
 
-    const { error: friendError } = await supabase
+    const { error: friendError } = await supabaseAdmin
       .from('friends')
       .insert({
         user1_id,
@@ -75,4 +75,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+
 

@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 import {
   startOfWeekLocal,
   addDaysLocal,
@@ -35,16 +37,16 @@ export default function WeekDatePicker({ selectedDate, onSelectDate }: Props) {
   const goNextWeek = () => onSelectDate(addDaysLocal(sow, 7)); // select next Sun
 
   return (
-    <div className="flex items-center gap-2" suppressHydrationWarning>
+    <div className="date-nav-row" suppressHydrationWarning>
       <button
-        className="border border-neutral-900 bg-white px-2.5 py-1 rounded-md font-semibold hover:bg-neutral-50 transition-colors"
+        className="date-nav-arrow date-nav-arrow-left"
         onClick={goPrevWeek}
         aria-label="Previous week"
       >
         ‹
       </button>
       <div
-        className="grid [grid-auto-flow:column] [grid-auto-columns:minmax(92px,1fr)] gap-1.5"
+        className="date-pill-row"
         role="tablist"
         aria-label="Choose day"
       >
@@ -57,42 +59,38 @@ export default function WeekDatePicker({ selectedDate, onSelectDate }: Props) {
               key={i}
               role="tab"
               aria-selected={isSelected}
-              className={`border rounded-lg px-2.5 py-1.5 text-center hover:border-neutral-900 transition-colors ${
-                isSelected
-                  ? '!border-neutral-900 ring-2 ring-neutral-900'
-                  : 'border-neutral-300'
-              }`}
+              className={`date-chip ${isSelected ? 'is-active' : ''}`}
               onClick={() => onSelectDate(d)}
             >
-              <div className="text-[11px] font-bold text-neutral-700">
+              <div style={{ fontSize: '11px', fontWeight: '600' }}>
                 {fmtDay(d)}
               </div>
-              <div className="text-[12px] text-neutral-900">
+              <div style={{ fontSize: '12px' }}>
                 {fmtMon(d)} {fmtNum(d)}
               </div>
             </button>
           );
         })}
       </div>
-      <div className="picker">
-        <input
-          type="date"
-          value={localYMD(selectedDate)}
-          onChange={(e) => {
-            const pickedDate = toLocalMidnight(parseLocalYMD(e.target.value));
-            onSelectDate(pickedDate);
-          }}
-          aria-label="Jump to date"
-          className="border border-neutral-300 rounded-lg px-2 py-1 hover:border-neutral-900 transition-colors"
-        />
-      </div>
       <button
-        className="border border-neutral-900 bg-white px-2.5 py-1 rounded-md font-semibold hover:bg-neutral-50 transition-colors"
+        className="date-nav-arrow date-nav-arrow-right"
         onClick={goNextWeek}
         aria-label="Next week"
       >
         ›
       </button>
+      <DatePicker
+        selected={selectedDate}
+        onChange={(date: Date | null) => {
+          if (date) {
+            onSelectDate(toLocalMidnight(date));
+          }
+        }}
+        className="planner-date-input"
+        calendarClassName="planner-calendar"
+        dateFormat="MMM d, yyyy"
+        aria-label="Jump to date"
+      />
     </div>
   );
 }

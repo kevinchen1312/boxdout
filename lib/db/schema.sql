@@ -66,8 +66,7 @@ CREATE TABLE IF NOT EXISTS notes (
   visibility TEXT NOT NULL CHECK (visibility IN ('self', 'friends', 'group', 'public')) DEFAULT 'self',
   group_id UUID REFERENCES groups(id) ON DELETE SET NULL,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  UNIQUE(user_id, game_id)
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 -- Create indexes for better query performance
@@ -232,5 +231,185 @@ $$ language 'plpgsql';
 
 -- Trigger to auto-update updated_at on notes
 CREATE TRIGGER update_notes_updated_at BEFORE UPDATE ON notes
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Custom players table
+CREATE TABLE IF NOT EXISTS custom_players (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  position TEXT NOT NULL,
+  team TEXT NOT NULL,
+  rank INTEGER NOT NULL,
+  height TEXT,
+  class TEXT,
+  jersey TEXT,
+  team_id TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Custom player games table
+CREATE TABLE IF NOT EXISTS custom_player_games (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  custom_player_id UUID NOT NULL REFERENCES custom_players(id) ON DELETE CASCADE,
+  game_id TEXT NOT NULL,
+  date DATE NOT NULL,
+  date_key TEXT NOT NULL,
+  home_team TEXT NOT NULL,
+  away_team TEXT NOT NULL,
+  tipoff TEXT,
+  tv TEXT,
+  venue TEXT,
+  location_type TEXT CHECK (location_type IN ('home', 'away', 'neutral')),
+  source TEXT NOT NULL DEFAULT 'espn',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(custom_player_id, game_id)
+);
+
+-- Create indexes for custom players tables
+CREATE INDEX IF NOT EXISTS idx_custom_players_user_id ON custom_players(user_id);
+CREATE INDEX IF NOT EXISTS idx_custom_players_rank ON custom_players(user_id, rank);
+CREATE INDEX IF NOT EXISTS idx_custom_player_games_custom_player_id ON custom_player_games(custom_player_id);
+CREATE INDEX IF NOT EXISTS idx_custom_player_games_date_key ON custom_player_games(date_key);
+CREATE INDEX IF NOT EXISTS idx_custom_player_games_game_id ON custom_player_games(game_id);
+
+-- Enable Row Level Security for custom players tables
+ALTER TABLE custom_players ENABLE ROW LEVEL SECURITY;
+ALTER TABLE custom_player_games ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for custom_players table
+CREATE POLICY "Users can view own custom players" ON custom_players
+  FOR SELECT USING (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.uid()::text));
+
+CREATE POLICY "Users can insert own custom players" ON custom_players
+  FOR INSERT WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.uid()::text));
+
+CREATE POLICY "Users can update own custom players" ON custom_players
+  FOR UPDATE USING (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.uid()::text));
+
+CREATE POLICY "Users can delete own custom players" ON custom_players
+  FOR DELETE USING (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.uid()::text));
+
+-- RLS Policies for custom_player_games table
+CREATE POLICY "Users can view games for own custom players" ON custom_player_games
+  FOR SELECT USING (
+    custom_player_id IN (
+      SELECT id FROM custom_players WHERE user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.uid()::text)
+    )
+  );
+
+CREATE POLICY "Users can insert games for own custom players" ON custom_player_games
+  FOR INSERT WITH CHECK (
+    custom_player_id IN (
+      SELECT id FROM custom_players WHERE user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.uid()::text)
+    )
+  );
+
+CREATE POLICY "Users can update games for own custom players" ON custom_player_games
+  FOR UPDATE USING (
+    custom_player_id IN (
+      SELECT id FROM custom_players WHERE user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.uid()::text)
+    )
+  );
+
+CREATE POLICY "Users can delete games for own custom players" ON custom_player_games
+  FOR DELETE USING (
+    custom_player_id IN (
+      SELECT id FROM custom_players WHERE user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.uid()::text)
+    )
+  );
+
+-- Trigger to auto-update updated_at on custom_players
+CREATE TRIGGER update_custom_players_updated_at BEFORE UPDATE ON custom_players
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Prospects table (shared across users, stores ESPN/external data)
+CREATE TABLE IF NOT EXISTS prospects (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  espn_id TEXT,
+  full_name TEXT NOT NULL,
+  position TEXT,
+  team_name TEXT,
+  league TEXT,
+  source TEXT NOT NULL DEFAULT 'internal',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(espn_id)
+);
+
+-- User rankings table (links users to prospects with ranks)
+CREATE TABLE IF NOT EXISTS user_rankings (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  prospect_id UUID NOT NULL REFERENCES prospects(id) ON DELETE CASCADE,
+  rank INTEGER NOT NULL,
+  source TEXT NOT NULL DEFAULT 'my_board',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(user_id, prospect_id)
+);
+
+-- Prospect schedule imports table (tracks background schedule imports)
+CREATE TABLE IF NOT EXISTS prospect_schedule_imports (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  prospect_id UUID NOT NULL REFERENCES prospects(id) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'in_progress', 'done', 'error')) DEFAULT 'pending',
+  last_error TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create indexes for new tables
+CREATE INDEX IF NOT EXISTS idx_prospects_espn_id ON prospects(espn_id);
+CREATE INDEX IF NOT EXISTS idx_prospects_full_name ON prospects(full_name);
+CREATE INDEX IF NOT EXISTS idx_user_rankings_user_id ON user_rankings(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_rankings_prospect_id ON user_rankings(prospect_id);
+CREATE INDEX IF NOT EXISTS idx_user_rankings_rank ON user_rankings(user_id, rank);
+CREATE INDEX IF NOT EXISTS idx_prospect_schedule_imports_prospect_id ON prospect_schedule_imports(prospect_id);
+CREATE INDEX IF NOT EXISTS idx_prospect_schedule_imports_status ON prospect_schedule_imports(status);
+
+-- Enable Row Level Security for new tables
+ALTER TABLE prospects ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_rankings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE prospect_schedule_imports ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for prospects table (public read, authenticated can insert)
+CREATE POLICY "Anyone can view prospects" ON prospects
+  FOR SELECT USING (true);
+
+CREATE POLICY "Authenticated can insert prospects" ON prospects
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
+
+-- RLS Policies for user_rankings table
+CREATE POLICY "Users can view own rankings" ON user_rankings
+  FOR SELECT USING (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.uid()::text));
+
+CREATE POLICY "Users can insert own rankings" ON user_rankings
+  FOR INSERT WITH CHECK (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.uid()::text));
+
+CREATE POLICY "Users can update own rankings" ON user_rankings
+  FOR UPDATE USING (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.uid()::text));
+
+CREATE POLICY "Users can delete own rankings" ON user_rankings
+  FOR DELETE USING (user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.uid()::text));
+
+-- RLS Policies for prospect_schedule_imports table
+CREATE POLICY "Users can view schedule imports for their prospects" ON prospect_schedule_imports
+  FOR SELECT USING (
+    prospect_id IN (
+      SELECT prospect_id FROM user_rankings WHERE user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.uid()::text)
+    )
+  );
+
+CREATE POLICY "Users can insert schedule imports for their prospects" ON prospect_schedule_imports
+  FOR INSERT WITH CHECK (
+    prospect_id IN (
+      SELECT prospect_id FROM user_rankings WHERE user_id IN (SELECT id FROM users WHERE clerk_user_id = auth.uid()::text)
+    )
+  );
+
+-- Trigger to auto-update updated_at on prospect_schedule_imports
+CREATE TRIGGER update_prospect_schedule_imports_updated_at BEFORE UPDATE ON prospect_schedule_imports
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 

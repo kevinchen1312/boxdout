@@ -1,5 +1,5 @@
 import { auth } from '@clerk/nextjs/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 import { NextResponse } from 'next/server';
 
 export async function GET(req: Request) {
@@ -11,7 +11,7 @@ export async function GET(req: Request) {
     }
 
     // Get user's Supabase ID
-    const { data: userData, error: userError } = await supabase
+    const { data: userData, error: userError } = await supabaseAdmin
       .from('users')
       .select('id')
       .eq('clerk_user_id', userId)
@@ -22,7 +22,7 @@ export async function GET(req: Request) {
     }
 
     // Get all friendships
-    const { data: friendships, error: friendshipsError } = await supabase
+    const { data: friendships, error: friendshipsError } = await supabaseAdmin
       .from('friends')
       .select(`
         id,
@@ -52,7 +52,7 @@ export async function GET(req: Request) {
     }) || [];
 
     // Get pending received requests
-    const { data: receivedRequests, error: receivedError } = await supabase
+    const { data: receivedRequests, error: receivedError } = await supabaseAdmin
       .from('friend_requests')
       .select(`
         id,
@@ -67,7 +67,7 @@ export async function GET(req: Request) {
     }
 
     // Get pending sent requests
-    const { data: sentRequests, error: sentError } = await supabase
+    const { data: sentRequests, error: sentError } = await supabaseAdmin
       .from('friend_requests')
       .select(`
         id,
@@ -91,4 +91,5 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+
 

@@ -6,6 +6,7 @@ const isPublicRoute = createRouteMatcher([
   '/sign-in(.*)',
   '/sign-up(.*)',
   '/api/webhooks(.*)',
+  '/api/games(.*)',
   '/rankings(.*)',
 ]);
 
@@ -23,4 +24,5 @@ export const config = {
     '/(api|trpc)(.*)',
   ],
 };
+
 

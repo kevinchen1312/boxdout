@@ -9,7 +9,7 @@ import { runProspectSearch } from '../search/runProspectSearch';
 import type { TeamItem } from '@/lib/search/tokens';
 import { plain } from '@/lib/search/tokens';
 
-type ProspectEntry = { key: string; label: string; type: 'prospect' };
+type ProspectEntry = { key: string; label: string; type: 'prospect'; team?: string };
 type Entry = TeamItem | ProspectEntry;
 
 export default function SearchOverlay({
@@ -80,16 +80,32 @@ export default function SearchOverlay({
   // Build team catalog once (memoized)
   const catalog = useMemo(() => buildTeamCatalog(allGamesForCatalog), [allGamesForCatalog]);
 
-  // Extract prospect names
-  const prospectNames = useMemo(() => {
-    const names = new Set<string>();
+  // Extract prospect names with team information
+  const prospectMap = useMemo(() => {
+    const map = new Map<string, { name: string; team?: string }>();
     for (const g of allGames) {
-      for (const p of g.prospects || []) {
-        if (p.name) names.add(p.name);
+      // Check all prospect arrays
+      const allProspects = [
+        ...(g.prospects || []),
+        ...(g.homeProspects || []),
+        ...(g.awayProspects || []),
+      ];
+      for (const p of allProspects) {
+        if (p.name) {
+          // Store prospect with team info (use teamDisplay or team)
+          const existing = map.get(p.name);
+          const team = p.teamDisplay || p.team || '';
+          // If we already have this prospect, keep the team info if we don't have it yet
+          if (!existing || (!existing.team && team)) {
+            map.set(p.name, { name: p.name, team });
+          }
+        }
       }
     }
-    return Array.from(names);
+    return map;
   }, [allGames]);
+  
+  const prospectNames = useMemo(() => Array.from(prospectMap.keys()), [prospectMap]);
 
   // Resolve teams using deterministic resolver (no substring matching)
   const teamResults = useMemo(() => resolveTeams(debounced, catalog), [debounced, catalog]);
@@ -109,12 +125,14 @@ export default function SearchOverlay({
       entries.push(team);
     }
 
-    // Add prospect results
+    // Add prospect results with team information
     for (const name of prospectResults) {
+      const prospectInfo = prospectMap.get(name);
       entries.push({
         key: `p:${name}`,
         label: name,
         type: 'prospect',
+        team: prospectInfo?.team,
       } as ProspectEntry);
     }
 
@@ -253,7 +271,14 @@ export default function SearchOverlay({
                       onClick={() => choose(r)}
                     >
                       <div className="flex items-center justify-between">
-                        <div className="font-medium">{label}</div>
+                        <div>
+                          <div className="font-medium">{label}</div>
+                          {!isTeam && (r as ProspectEntry).team && (
+                            <div className="text-xs text-neutral-500 mt-0.5">
+                              {(r as ProspectEntry).team}
+                            </div>
+                          )}
+                        </div>
                         <div className="text-neutral-500 text-xs">
                           {isTeam ? 'Team' : 'Prospect'}
                         </div>

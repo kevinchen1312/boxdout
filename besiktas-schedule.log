@@ -1,0 +1,32 @@
+﻿[dotenv@17.2.3] injecting env (9) from .env.local -- tip: ≡ƒôí add observability to secrets: https://dotenvx.com/ops
+≡ƒöì Checking Besiktas schedule in international_team_schedules...
+
+node.exe : (node:18968) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type 
+of file:///C:/Users/ucric/prospectcal/scripts/check-besiktas-schedule.ts is 
+not specified and it doesn't parse as CommonJS.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ((node:18968) [M...se as Common 
+   JS.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Reparsing as ES module because module syntax was detected. This incurs a 
+performance overhead.
+To eliminate this warning, add "type": "module" to 
+C:\Users\ucric\prospectcal\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+Γ£à Found: Besiktas (Super Ligi)
+
+Found 8 games in Nov-Dec 2025:
+
+2025-11-01: Merkezefendi vs Besiktas
+2025-11-09: Besiktas vs Anadolu Efes
+2025-11-16: Trabzonspor vs Besiktas
+2025-11-22: Besiktas vs Manisa
+2025-12-07: Karsiyaka vs Besiktas
+2025-12-13: Bahcesehir Kol. vs Besiktas
+2025-12-20: Besiktas vs Tofas
+2025-12-27: Petkim Spor vs Besiktas
+
+Γ£à No fake college games found - all opponents are legitimate

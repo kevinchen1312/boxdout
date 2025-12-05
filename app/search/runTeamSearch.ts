@@ -37,3 +37,8 @@ export function runTeamSearch(q: string, catalog: TeamItem[]) {
   return aliasHit ? [aliasHit, ...withDist] : withDist;
 }
 
+
+
+
+
+

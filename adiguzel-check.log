@@ -1,0 +1,37 @@
+﻿[dotenv@17.2.3] injecting env (9) from .env.local -- tip: ≡ƒöÉ prevent committing .env to code: https://dotenvx.com/precommit
+≡ƒöì Checking E. Adiguzel data...
+
+node.exe : (node:31676) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type 
+of file:///C:/Users/ucric/prospectcal/scripts/check-adiguzel.ts is not 
+specified and it doesn't parse as CommonJS.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ((node:31676) [M...se as Common 
+   JS.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Reparsing as ES module because module syntax was detected. This incurs a 
+performance overhead.
+To eliminate this warning, add "type": "module" to 
+C:\Users\ucric\prospectcal\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+Found 1 prospect(s):
+
+Name: E. Adiguzel
+Team: Besiktas
+Team ID: null
+International Team ID: 3ef42f64-bcae-416c-b7bb-3896d054c2d3
+Source: international-roster
+League: Super Ligi
+
+Γ£à Besiktas teams found:
+  Besiktas W - TKBL W (ID: 37ba785f-1ea4-46b6-bd61-acb6d37d705e, API ID: 1251)
+  Besiktas - Super Ligi (ID: 3ef42f64-bcae-416c-b7bb-3896d054c2d3, API ID: 1266)
+
+Besiktas W schedule: 39 games
+
+Besiktas schedule: 72 games
+
+Γ£à Found in international_rosters:
+  E. Adiguzel ΓåÆ Besiktas (Team ID: 3ef42f64-bcae-416c-b7bb-3896d054c2d3)

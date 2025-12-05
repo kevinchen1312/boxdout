@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { parseISO, format } from 'date-fns';
 import { getGamesBetween } from '@/lib/loadSchedules';
 import type { RankingSource } from '@/lib/loadProspects';
+import { auth } from '@clerk/nextjs/server';
 
 export async function GET(request: NextRequest) {
   try {
@@ -37,7 +38,14 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    const games = await getGamesBetween(format(startDate, 'yyyy-MM-dd'), format(endDate, 'yyyy-MM-dd'), source);
+    // Get userId if source is 'myboard' (needed for custom players)
+    let clerkUserId: string | undefined;
+    if (source === 'myboard') {
+      const { userId } = await auth();
+      clerkUserId = userId || undefined;
+    }
+    
+    const games = await getGamesBetween(format(startDate, 'yyyy-MM-dd'), format(endDate, 'yyyy-MM-dd'), source, clerkUserId);
 
     return NextResponse.json({ games, source });
   } catch (error) {

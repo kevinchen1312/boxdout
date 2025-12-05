@@ -1,5 +1,5 @@
 import { auth } from '@clerk/nextjs/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 import { NextResponse } from 'next/server';
 
 export async function GET(req: Request) {
@@ -11,7 +11,7 @@ export async function GET(req: Request) {
     }
 
     // Get user's Supabase ID
-    const { data: userData, error: userError } = await supabase
+    const { data: userData, error: userError } = await supabaseAdmin
       .from('users')
       .select('id')
       .eq('clerk_user_id', userId)
@@ -22,8 +22,8 @@ export async function GET(req: Request) {
     }
 
     // Get friends' watched games
-    // This query will be allowed by RLS policies for friends
-    const { data, error } = await supabase
+    // Using admin client to bypass RLS since we're doing server-side auth with Clerk
+    const { data, error } = await supabaseAdmin
       .from('watched_games')
       .select(`
         game_id,
@@ -46,4 +46,5 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+
 

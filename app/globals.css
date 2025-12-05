@@ -3,6 +3,26 @@
 @tailwind utilities;
 
 :root {
+  /* Design Tokens */
+  --bg-page: #f5f5f7;
+  --bg-card: #ffffff;
+  --border-subtle: rgba(148, 163, 184, 0.35);
+  --shadow-soft: 0 1px 3px rgba(15, 23, 42, 0.08);
+  --radius-card: 8px;
+  --radius-small: 4px;
+
+  --font-family-base: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-base: 14px;
+  --font-small: 12px;
+  --font-large: 16px;
+
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-meta: #6b7280;
+
+  --accent: #8a2be2;
+
+  /* Legacy vars for compatibility */
   --background: #ffffff;
   --foreground: #171717;
   --cal-bw: 1.5px;
@@ -17,10 +37,381 @@
   }
 }
 
-body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+body,
+.app-root {
+  background: var(--bg-page);
+  font-family: var(--font-family-base);
+  font-size: var(--font-base);
+  color: var(--text-primary);
+}
+
+/* Shared Helper Classes */
+.page-title {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.card {
+  background: var(--bg-card);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-soft);
+}
+
+.card-inner {
+  padding: 12px 16px;
+}
+
+.meta-text {
+  font-size: var(--font-small);
+  color: var(--text-meta);
+}
+
+.app-button {
+  font-family: var(--font-family-base);
+  font-size: 13px;
+  border-radius: var(--radius-small);
+  border: 1px solid var(--border-subtle);
+  padding: 4px 10px;
+  background: var(--bg-card);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.app-button:hover {
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.app-button-primary {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
+.app-button-primary:hover {
+  opacity: 0.9;
+}
+
+/* Alert Component */
+.app-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  margin: 12px 0;
+  border-radius: 6px;
+  font-size: 13px;
+  border: 1px solid transparent;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.app-alert-icon {
+  font-weight: 600;
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+
+.app-alert-text {
+  flex: 1;
+}
+
+/* Success */
+.app-alert-success {
+  border-color: #bbf7d0;
+  background-color: #ecfdf3;
+  color: #166534;
+}
+
+.app-alert-success .app-alert-icon {
+  color: #16a34a;
+}
+
+/* Error */
+.app-alert-error {
+  border-color: #fecaca;
+  background-color: #fef2f2;
+  color: #b91c1c;
+}
+
+.app-alert-error .app-alert-icon {
+  color: #ef4444;
+}
+
+/* Ghost Button */
+.app-button-ghost {
+  font-family: var(--font-family-base);
+  font-size: 13px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: #ffffff;
+  color: var(--accent);
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.app-button-ghost:hover {
+  border-color: var(--accent);
+  background: rgba(138, 43, 226, 0.05);
+}
+
+/* Rankings Actions */
+.rankings-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.app-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.app-input,
+.app-select,
+.app-textarea {
+  font-family: var(--font-family-base);
+  font-size: 13px;
+  color: var(--text-primary);
+  border-radius: var(--radius-small);
+  border: 1px solid var(--border-subtle);
+  padding: 4px 8px;
+  background: var(--bg-card);
+}
+
+.app-input:focus,
+.app-select:focus,
+.app-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(138, 43, 226, 0.2);
+}
+
+/* Rankings Row */
+.rankings-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+}
+
+.rankings-row:last-child {
+  border-bottom: none;
+}
+
+.drag-handle {
+  width: 24px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.rank-container {
+  width: 40px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.rank-input {
+  width: 24px;
+  text-align: center;
+  padding: 0;
+  margin: 0;
+  -moz-appearance: textfield;
+}
+
+.rank-input::-webkit-inner-spin-button,
+.rank-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.player-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.player-sub {
+  margin-top: 2px;
+}
+
+/* Tabs */
+.tabs {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.tab {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab:hover {
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.tab.is-active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+/* Page Layout Container */
+.page-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+@media (min-width: 768px) {
+  .page-container {
+    padding: 32px 24px;
+  }
+}
+
+/* Notes Page Specific Styles */
+.notes-page-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+
+/* Back to Calendar Button - Consistent style */
+.back-to-calendar-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: #ffffff;
+  color: var(--accent);
+  font-family: var(--font-family-base);
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: all 0.2s;
+}
+
+.back-to-calendar-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.back-to-calendar-button:hover {
+  border-color: var(--accent);
+  background: rgba(138, 43, 226, 0.05);
+}
+
+.back-to-calendar-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Page Header - For consistent header layout */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.search-wrapper {
+  max-width: 400px;
+  margin-bottom: 24px;
+}
+
+/* Notes Search Input */
+.notes-search-input {
+  width: 100%;
+  max-width: 360px;
+  box-sizing: border-box;
+  font-family: var(--font-family-base);
+  font-size: 14px;
+  border-radius: var(--radius-small);
+  border: 1px solid var(--border-subtle);
+  padding: 6px 10px;
+  background: #ffffff;
+  color: var(--text-primary);
+  margin-bottom: 24px;
+}
+
+.notes-search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(138, 43, 226, 0.2);
+}
+
+/* Note Card */
+.note-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-soft);
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.note-game-info {
+  font-size: var(--font-small);
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.note-title {
+  font-size: var(--font-base);
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.note-meta {
+  font-size: var(--font-small);
+  color: var(--text-meta);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.note-meta .dot {
+  color: var(--text-meta);
+  opacity: 0.5;
+}
+
+.note-meta svg {
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.note-row-footer {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  margin-top: 4px;
 }
 
 @layer utilities {
@@ -73,14 +464,16 @@ body {
   }
 }
 
-/* DATE HEADER — no borders at all */
+/* DATE HEADER — modern neutral style */
 .date-header {
-  margin: 18px 0 8px;
+  margin: 18px 0 12px;
   padding: 0;
   border: none !important;
-  background: var(--cal-bg);
-  font-weight: 700;
-  text-transform: uppercase;
+  background: transparent;
+  font-size: var(--font-large);
+  font-weight: 600;
+  color: var(--text-primary);
+  text-transform: none;
 }
 
 .date-header:first-child {
@@ -88,28 +481,29 @@ body {
 }
 
 .date-header .date-sub {
+  font-size: var(--font-base);
+  font-weight: 500;
+  color: var(--text-meta);
   text-transform: none;
-  font-weight: 600;
 }
 
-/* DAY BOX — this is the only outer border for that day */
-/* All borders explicitly set to same thickness to ensure consistency */
+/* DAY BOX — removed borders, now handled by individual game cards */
 .day-table {
-  border: var(--cal-bw) solid var(--cal-bc);
+  border: none;
   box-sizing: border-box;
-  background: var(--cal-bg);
+  background: transparent;
 }
 
-/* GAME ROWS — stack flush, no gaps; only draw a TOP border on rows after the first */
+/* GAME ROWS — modern card style */
 .game-row {
-  margin: 0;
+  margin: 0 0 12px 0;
   padding: 0;
   border: 0;
   box-sizing: border-box;
 }
 
 .day-table .game-row + .game-row {
-  border-top: var(--cal-bw) solid var(--cal-bc);
+  border-top: none;
 }
 
 .matchup-header {
@@ -177,9 +571,9 @@ body {
 .team-name {
   margin-top: 4px;
   margin-bottom: 8px;
-  font-weight: 600;
-  font-size: 0.875rem;
-  color: #1f2937;
+  font-weight: 500;
+  font-size: var(--font-base);
+  color: var(--text-primary);
   line-height: 1.25;
   padding: 0 4px;
 }
@@ -188,4 +582,870 @@ body {
 .game-row .prospects:last-child {
   margin-bottom: 0;
   padding-bottom: 6px;
+}
+
+/* Planner Layout - Modern flex layout with consistent gap */
+.prospect-planner-layout,
+.planner-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 24px;
+  width: 100%;
+}
+
+@media (max-width: 1024px) {
+  .prospect-planner-layout,
+  .planner-layout {
+    flex-direction: column;
+    gap: 16px;
+  }
+}
+
+/* Panel Cards - Modern neutral dashboard style */
+.planner-panel {
+  background: var(--bg-card);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-soft);
+  padding: 12px 16px;
+  margin-top: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Fallback margin on notes panel wrapper */
+.notes-panel-wrapper {
+  margin-left: 0;
+}
+
+/* Game Card - Modern neutral card style */
+.game-card,
+.game-card-inner,
+.game-row {
+  background: var(--bg-card);
+  border-radius: var(--radius-small);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+  padding: 16px 20px;
+  margin-bottom: 12px;
+}
+
+/* Game Card Time and Network - Subtle styling */
+.game-card-time {
+  font-size: var(--font-small);
+  color: var(--text-secondary);
+  padding-right: 12px;
+}
+
+.game-card-network {
+  font-size: var(--font-small);
+  color: var(--text-secondary);
+  padding-left: 12px;
+  text-align: right;
+}
+
+/* Typography Hierarchy */
+.page-title {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text-primary);
+}
+
+.panel-title {
+  font-size: var(--font-large);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.prospect-line,
+.note-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.meta-text {
+  font-size: var(--font-small);
+  color: var(--text-meta);
+}
+
+/* Note Rows - Clean card style */
+.note-row {
+  border-radius: var(--radius-small);
+  border: 1px solid var(--border-subtle);
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  background: var(--bg-card);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.note-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* Notes Editor - Subtle separation */
+.notes-editor {
+  margin-top: 16px;
+}
+
+/* Notes Form Section */
+.notes-form-section {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Notes Footer */
+.notes-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+/* Delete Button - Ghost style */
+.delete-button {
+  font-family: var(--font-family-base);
+  font-size: 12px;
+  border-radius: var(--radius-small);
+  border: 1px solid var(--border-subtle);
+  padding: 2px 8px;
+  background: var(--bg-card);
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--text-secondary);
+}
+
+.delete-button:hover {
+  background: rgba(148, 163, 184, 0.08);
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.3);
+}
+
+/* Note Row Icon */
+.note-row-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Game Notes Panel */
+.game-notes-panel {
+  background: var(--bg-card);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-soft);
+}
+
+.game-notes-panel .card-inner {
+  padding: 16px 20px;
+}
+
+/* Top Navigation - Pill style */
+/* Planner Header */
+.planner-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.planner-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.planner-tab {
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: transparent;
+  text-decoration: none;
+  cursor: pointer;
+  font-family: var(--font-family-base);
+  transition: all 0.2s;
+}
+
+.planner-tab:hover {
+  background: rgba(148, 163, 184, 0.1);
+  border-color: var(--border-subtle);
+}
+
+/* Active tab (e.g., My Board when on calendar) */
+.planner-tab--active {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
+.planner-tab--active:hover {
+  background: #7c3aed;
+  border-color: #7c3aed;
+}
+
+.planner-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+/* Friend Activity Card */
+.friend-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-soft);
+  padding: 0;
+  overflow: visible;
+}
+
+.friend-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card) var(--radius-card) 0 0;
+}
+
+.friend-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 6px;
+}
+
+.friend-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.friend-card-chevron {
+  font-size: 12px;
+  color: var(--text-meta);
+  line-height: 1;
+}
+
+.friend-card-body {
+  padding: 16px 14px 14px;
+  max-height: 384px;
+  overflow-y: auto;
+}
+
+.friend-empty {
+  text-align: center;
+  padding: 24px 12px;
+  font-size: 13px;
+  color: var(--text-meta);
+}
+
+/* Friend Activity List */
+.friend-activity-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.friend-activity-row {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  padding: 6px 0;
+}
+
+.friend-activity-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.friend-activity-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.friend-activity-text {
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.friend-activity-text strong {
+  font-weight: 500;
+}
+
+.friend-activity-meta {
+  color: var(--text-meta);
+  margin-top: 2px;
+  font-size: 11px;
+}
+
+/* Add Friends Button */
+.friend-add-button {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: #ffffff;
+  color: var(--accent);
+  cursor: pointer;
+  font-family: var(--font-family-base);
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.friend-add-button:hover {
+  border-color: var(--accent);
+  background: rgba(138, 43, 226, 0.05);
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+
+.modal-content {
+  background: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 20px 35px rgba(15, 23, 42, 0.18);
+  width: 100%;
+  max-width: 520px;
+  margin: 0 16px;
+  padding: 20px 24px 18px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 0;
+}
+
+.modal-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.modal-close {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  padding: 4px;
+  color: var(--text-meta);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-small);
+  transition: all 0.2s;
+  line-height: 1;
+}
+
+.modal-close:hover {
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--text-primary);
+}
+
+.modal-body {
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+}
+
+/* Add Friends Modal */
+.add-friends-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+}
+
+.add-friends-search-row {
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+.add-friends-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--font-family-base);
+  font-size: 14px;
+  border-radius: var(--radius-small);
+  border: 1px solid var(--border-subtle);
+  padding: 6px 10px;
+  background: #ffffff;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.add-friends-search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(138, 43, 226, 0.2);
+}
+
+.add-friends-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.add-friends-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.add-friends-row:last-child {
+  border-bottom: none;
+}
+
+.add-friends-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.avatar-small {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.add-friends-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.add-friends-meta {
+  font-size: 12px;
+  color: var(--text-meta);
+  margin-top: 2px;
+}
+
+.friend-action-button {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: #ffffff;
+  color: var(--accent);
+  cursor: pointer;
+  font-family: var(--font-family-base);
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.friend-action-button:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: rgba(138, 43, 226, 0.05);
+}
+
+.friend-action-button--add {
+  color: var(--accent);
+}
+
+.friend-action-button--pending {
+  color: var(--text-meta);
+  cursor: default;
+  opacity: 0.7;
+}
+
+.friend-action-button--friends {
+  color: var(--text-secondary);
+  cursor: default;
+  opacity: 0.7;
+}
+
+.friend-action-button:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+/* Date Navigation Row */
+.date-nav-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.date-pill-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.date-nav-arrow {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 999px;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 18px;
+  padding: 0;
+  transition: all 0.2s;
+}
+
+.date-nav-arrow:hover {
+  background: rgba(148, 163, 184, 0.15);
+}
+
+/* Date Picker Input */
+.planner-date-input {
+  font-family: var(--font-family-base) !important;
+  font-size: 13px !important;
+  border-radius: var(--radius-small) !important;
+  border: 1px solid var(--border-subtle) !important;
+  padding: 6px 10px !important;
+  background: #ffffff !important;
+  color: var(--text-primary) !important;
+  min-width: 120px !important;
+  box-sizing: border-box !important;
+}
+
+.planner-date-input:focus {
+  outline: none !important;
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 0 1px rgba(138, 43, 226, 0.2) !important;
+}
+
+/* Date Picker Popup - Root calendar card */
+.react-datepicker.planner-calendar,
+.react-datepicker {
+  border-radius: var(--radius-card) !important;
+  border: 1px solid var(--border-subtle) !important;
+  box-shadow: var(--shadow-soft) !important;
+  font-family: var(--font-family-base) !important;
+  font-size: 12px !important;
+  background-color: #ffffff !important;
+}
+
+.react-datepicker__header {
+  background-color: #ffffff !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  border-radius: var(--radius-card) var(--radius-card) 0 0 !important;
+}
+
+.react-datepicker__current-month {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: var(--text-primary) !important;
+}
+
+.react-datepicker__day-name {
+  color: var(--text-secondary) !important;
+  font-weight: 500 !important;
+  width: 2rem !important;
+  line-height: 2rem !important;
+  margin: 0.1rem !important;
+}
+
+.react-datepicker__day {
+  width: 2rem !important;
+  line-height: 2rem !important;
+  margin: 0.1rem !important;
+  border-radius: 999px !important;
+  color: var(--text-primary) !important;
+  transition: all 0.2s !important;
+}
+
+.react-datepicker__day:hover {
+  background-color: rgba(148, 163, 184, 0.2) !important;
+  border-radius: 999px !important;
+}
+
+.react-datepicker__day--selected,
+.react-datepicker__day--keyboard-selected {
+  background-color: var(--accent) !important;
+  color: #ffffff !important;
+  border-radius: 999px !important;
+}
+
+.react-datepicker__day--selected:hover,
+.react-datepicker__day--keyboard-selected:hover {
+  background-color: #7c3aed !important;
+}
+
+.react-datepicker__day--today {
+  font-weight: 600 !important;
+  border: 1px solid var(--accent) !important;
+  border-radius: 999px !important;
+}
+
+.react-datepicker__day--today:not(.react-datepicker__day--selected) {
+  background-color: transparent !important;
+}
+
+.react-datepicker__navigation {
+  top: 12px !important;
+}
+
+.react-datepicker__navigation--next {
+  right: 12px !important;
+}
+
+.react-datepicker__navigation--previous {
+  left: 12px !important;
+}
+
+.react-datepicker__navigation-icon::before {
+  border-color: var(--text-secondary) !important;
+}
+
+.react-datepicker__navigation:hover .react-datepicker__navigation-icon::before {
+  border-color: var(--text-primary) !important;
+}
+
+.react-datepicker__close-icon::after {
+  background-color: transparent !important;
+  color: var(--text-secondary) !important;
+}
+
+.react-datepicker__today-button,
+.react-datepicker__clear-button {
+  font-size: 11px !important;
+  color: var(--accent) !important;
+  background: transparent !important;
+  border: none !important;
+  cursor: pointer !important;
+  padding: 4px 8px !important;
+  border-radius: var(--radius-small) !important;
+}
+
+.react-datepicker__today-button:hover,
+.react-datepicker__clear-button:hover {
+  background-color: rgba(138, 43, 226, 0.05) !important;
+}
+
+/* Planner Search Input */
+.planner-search-input {
+  font-family: var(--font-family-base);
+  font-size: 13px;
+  border-radius: var(--radius-small);
+  border: 1px solid var(--border-subtle);
+  padding: 6px 10px;
+  background: #ffffff;
+  color: var(--text-primary);
+  min-width: 200px;
+  box-sizing: border-box;
+}
+
+.planner-search-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(138, 43, 226, 0.2);
+}
+
+.planner-search-input::placeholder {
+  color: var(--text-meta);
+}
+
+/* Loading Spinner */
+.loading-spinner-container {
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-meta);
+}
+
+/* circular spinner using accent color */
+.loading-spinner-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 3px solid rgba(138, 43, 226, 0.18); /* faint track */
+  border-top-color: var(--accent);            /* active segment */
+  animation: loading-spinner-rotate 0.75s linear infinite;
+}
+
+.loading-spinner-text {
+  font-size: 13px;
+}
+
+/* animation */
+@keyframes loading-spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Date Strip - Modern chip style */
+.date-strip {
+  display: inline-flex;
+  gap: 6px;
+  margin: 8px 0 12px;
+}
+
+.date-chip {
+  min-width: 70px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  font-size: var(--font-small);
+  color: var(--text-secondary);
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.date-chip.is-active {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
+.date-chip:hover {
+  background: rgba(148, 163, 184, 0.08);
+}
+
+/* Form Controls - Unified style */
+/* Disable native search icons globally */
+input[type="search"] {
+  -webkit-appearance: none;
+}
+
+/* Remove WebKit search decorations just in case */
+input[type="search"]::-webkit-search-decoration,
+input[type="search"]::-webkit-search-cancel-button,
+input[type="search"]::-webkit-search-results-button,
+input[type="search"]::-webkit-search-results-decoration {
+  display: none;
+}
+
+input[type="text"],
+input[type="search"],
+input[type="date"],
+select,
+textarea {
+  font-family: var(--font-family-base);
+  font-size: 13px;
+  color: var(--text-primary);
+  border-radius: var(--radius-small);
+  border: 1px solid var(--border-subtle);
+  padding: 4px 8px;
+  background: var(--bg-card);
+}
+
+input[type="text"]:focus,
+input[type="search"]:focus,
+input[type="date"]:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(138, 43, 226, 0.2);
+}
+
+/* Buttons - Unified style */
+button {
+  font-family: var(--font-family-base);
+  font-size: 13px;
+  border-radius: var(--radius-small);
+  border: 1px solid var(--border-subtle);
+  padding: 4px 10px;
+  background: var(--bg-card);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+button.primary {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Icon Buttons - Chromeless style */
+.icon-button {
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.icon-button:hover {
+  opacity: 0.8;
+}
+
+/* Rankings Editor Layout */
+.rankings-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2.5fr) minmax(260px, 1.2fr);
+  gap: 24px;
+  align-items: flex-start;
+}
+
+@media (max-width: 900px) {
+  .rankings-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .rankings-right {
+    order: -1; /* Show watchlist above list on mobile */
+  }
 }

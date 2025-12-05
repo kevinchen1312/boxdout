@@ -283,3 +283,8 @@ If performance is still not satisfactory:
 5. **Add compression**: Enable gzip/brotli
 6. **Use CDN**: Serve from edge locations
 
+
+
+
+
+

@@ -1,5 +1,5 @@
 import { auth } from '@clerk/nextjs/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     }
 
     // Get user's Supabase ID
-    const { data: userData, error: userError } = await supabase
+    const { data: userData, error: userError } = await supabaseAdmin
       .from('users')
       .select('id')
       .eq('clerk_user_id', userId)
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     }
 
     // Update request status
-    const { error } = await supabase
+    const { error } = await supabaseAdmin
       .from('friend_requests')
       .update({ status: 'rejected' })
       .eq('id', requestId)
@@ -44,4 +44,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+
 

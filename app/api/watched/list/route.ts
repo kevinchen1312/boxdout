@@ -1,5 +1,5 @@
 import { auth } from '@clerk/nextjs/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 import { NextResponse } from 'next/server';
 
 export async function GET(req: Request) {
@@ -11,7 +11,7 @@ export async function GET(req: Request) {
     }
 
     // Get user's Supabase ID
-    const { data: userData, error: userError } = await supabase
+    const { data: userData, error: userError } = await supabaseAdmin
       .from('users')
       .select('id')
       .eq('clerk_user_id', userId)
@@ -22,7 +22,7 @@ export async function GET(req: Request) {
     }
 
     // Get all watched games for user
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('watched_games')
       .select('game_id, watched_at, game_date')
       .eq('user_id', userData.id)
@@ -38,4 +38,5 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+
 

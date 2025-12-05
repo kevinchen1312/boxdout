@@ -169,3 +169,8 @@ This gives you 99% accuracy on games people actually care about, at $0 cost.
 
 **Want me to create that validation script instead?** It'll take 5 minutes and give you confidence in your current data.
 
+
+
+
+
+

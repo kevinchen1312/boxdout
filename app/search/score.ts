@@ -25,3 +25,8 @@ export function scoreTeam(qRaw: string, label: string, canon: string) {
   return [canonBoost, exact, starts, whole, substr, antiArkansas, len] as const;
 }
 
+
+
+
+
+

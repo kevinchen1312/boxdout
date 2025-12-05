@@ -13,6 +13,8 @@ interface GameCardProps {
   compact?: boolean;
   rankingSource?: RankingSource;
   onOpenNotes?: (game: GameWithProspects) => void;
+  watched?: boolean;
+  hasNote?: boolean;
 }
 
 const deriveTipoff = (game: GameWithProspects) => {
@@ -59,47 +61,64 @@ const formatGameDate = (game: GameWithProspects) => {
   }
 };
 
-const GameCard = memo(function GameCard({ game, compact = false, rankingSource = 'espn', onOpenNotes }: GameCardProps) {
+const GameCard = memo(function GameCard({ game, compact = false, rankingSource = 'espn', onOpenNotes, watched: initialWatched = false, hasNote: initialHasNote = false }: GameCardProps) {
   const [showTooltip, setShowTooltip] = useState(false);
-  const [watched, setWatched] = useState(false);
-  const [hasNote, setHasNote] = useState(false);
+  const [watched, setWatched] = useState(initialWatched);
+  const [hasNote, setHasNote] = useState(initialHasNote);
   const [isTogglingWatch, setIsTogglingWatch] = useState(false);
   const { isSignedIn } = useUser();
   const sourceLabel = rankingSource === 'myboard' ? 'myBoard' : 'ESPN';
 
-  const tipoffText = deriveTipoff(game) || 'TBD';
+  // Determine if game is completed (has scores)
+  const isCompleted = (game.homeTeam.score || game.awayTeam.score) && 
+                      (game.status === 'COMPLETED' || game.status === 'FINAL' || game.status === 'final' || game.status === 'post');
+  
+  // Determine if game is live (in progress)
+  const isLive = game.status === 'LIVE' || game.status === 'in';
+  
+  // For completed or live games with scores, show score with status detail
+  let displayText: string;
+  let statusText: string | undefined;
+  
+  if ((isCompleted || isLive) && game.awayTeam.score && game.homeTeam.score) {
+    displayText = `${game.awayTeam.score}-${game.homeTeam.score}`;
+    // Add status detail like "Halftime", "9:54 - 2nd", "Final"
+    if (game.statusDetail) {
+      statusText = game.statusDetail;
+    } else if (isLive && game.clock && game.period) {
+      // Format like ESPN: "9:54 - 2nd" or "9:54 - 1st"
+      const half = game.period === 1 ? '1st' : '2nd';
+      statusText = `${game.clock} - ${half}`;
+    } else if (isLive) {
+      statusText = 'Live';
+    } else if (isCompleted) {
+      statusText = 'Final';
+    }
+  } else if (isLive && !game.awayTeam.score && !game.homeTeam.score) {
+    // Live game but no scores yet - show LIVE indicator
+    displayText = 'LIVE';
+    statusText = 'In Progress';
+  } else {
+    displayText = deriveTipoff(game) || 'TBD';
+  }
+  
+  const tipoffText = displayText;
   const matchupLabel = buildMatchupLabel(game);
   const highlightLabel = getHighlightLabel(game);
+  
+  // Debug: Log scores if present
+  if (process.env.NODE_ENV === 'development' && (game.homeTeam.score || game.awayTeam.score)) {
+    console.log(`[GameCard] Scores for ${game.awayTeam.displayName} @ ${game.homeTeam.displayName}: ${game.awayTeam.score || 'N/A'} - ${game.homeTeam.score || 'N/A'}`);
+  }
 
-  // Load watched status on mount
+  // Update local state when props change
   useEffect(() => {
-    if (!isSignedIn) return;
-    
-    fetch('/api/watched/list')
-      .then(res => res.json())
-      .then(data => {
-        if (data.watchedGames) {
-          const isWatched = data.watchedGames.some((w: any) => w.game_id === game.id);
-          setWatched(isWatched);
-        }
-      })
-      .catch(err => console.error('Error loading watched status:', err));
-  }, [isSignedIn, game.id]);
+    setWatched(initialWatched);
+  }, [initialWatched]);
 
-  // Load note status
   useEffect(() => {
-    if (!isSignedIn) return;
-    
-    fetch(`/api/notes/get?gameId=${game.id}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.notes && data.notes.length > 0) {
-          const userNote = data.notes.find((n: any) => n.isOwn);
-          setHasNote(!!userNote);
-        }
-      })
-      .catch(err => console.error('Error loading note status:', err));
-  }, [isSignedIn, game.id]);
+    setHasNote(initialHasNote);
+  }, [initialHasNote]);
 
   const handleToggleWatch = async (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -117,17 +136,26 @@ const GameCard = memo(function GameCard({ game, compact = false, rankingSource =
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           gameId: game.id,
-          gameDate: game.dateKey || game.date.substring(0, 10),
+          gameDate: game.dateKey || game.date?.substring(0, 10) || '',
         }),
       });
 
-      const data = await response.json();
       if (response.ok) {
+        const data = await response.json();
+        console.log('Watch toggle successful:', data);
         // Confirm with server response
         setWatched(data.watched);
+        // Note: Parent component will refresh statuses on next render if needed
       } else {
-        // Revert on error
-        console.error('Error toggling watch:', data);
+        // Revert on error - try to parse error message
+        let errorMessage = 'Unknown error';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || JSON.stringify(errorData);
+        } catch {
+          errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+        }
+        console.error('Error toggling watch:', errorMessage);
         setWatched(!newWatchedState);
       }
     } catch (err) {
@@ -179,51 +207,256 @@ const GameCard = memo(function GameCard({ game, compact = false, rankingSource =
     );
   }
 
-  const awayTeamName = game.awayTeam.displayName || game.awayTeam.name;
-  const homeTeamName = game.homeTeam.displayName || game.homeTeam.name;
-  // Prospects are already pre-sorted from server, no need to sort again
-  const awayProspects = game.awayProspects;
-  const homeProspects = game.homeProspects;
-
-  // Get team logos - use ESPN CDN or fallback to provided logo
-  const getTeamLogo = (team: GameWithProspects['awayTeam']) => {
-    if (team.logo) {
-      return team.logo;
-    }
-    // If no logo provided, return null to show placeholder
-    return null;
+  // CRITICAL FIX: Create explicit display team objects that tie logos, names, and tracked players together
+  // This ensures logos always match the team names and players, even if team objects are swapped in the data
+  
+  // Helper to extract ESPN team ID from logo URL
+  // ESPN logo URLs are like: https://a.espncdn.com/i/teamlogos/ncaa/500/41.png
+  const extractTeamIdFromLogo = (logoUrl: string | null | undefined): string | null => {
+    if (!logoUrl) return null;
+    // Match pattern: /500/41.png or /500-dark/41.png
+    const match = logoUrl.match(/\/(\d+)\/(\d+)\.png/);
+    return match ? match[2] : null; // Return the team ID (second number)
   };
-
-  const awayLogo = getTeamLogo(game.awayTeam);
-  const homeLogo = getTeamLogo(game.homeTeam);
+  
+  // Left side = Away Team
+  const leftTeam = game.awayTeam;
+  const leftTeamName = leftTeam.displayName || leftTeam.name;
+  const leftTrackedPlayers = game.awayTrackedPlayers || [];
+  // Extract team ID from logo URL if id is not set (fallback for swapped teams)
+  const leftGameTeamId = game.awayTeam.id || extractTeamIdFromLogo(game.awayTeam.logo);
+  
+  // Right side = Home Team
+  const rightTeam = game.homeTeam;
+  const rightTeamName = rightTeam.displayName || rightTeam.name;
+  const rightTrackedPlayers = game.homeTrackedPlayers || [];
+  // Extract team ID from logo URL if id is not set (fallback for swapped teams)
+  const rightGameTeamId = game.homeTeam.id || extractTeamIdFromLogo(game.homeTeam.logo);
+  
+  // Debug logging for Dayton vs Virginia game
+  const isDaytonVirginia = (leftTeamName.toLowerCase().includes('dayton') && rightTeamName.toLowerCase().includes('virginia')) ||
+                           (leftTeamName.toLowerCase().includes('virginia') && rightTeamName.toLowerCase().includes('dayton'));
+  if (isDaytonVirginia && game.dateKey === '2025-12-06') {
+    console.log('[GameCard DEBUG] Dayton vs Virginia on 12/6:', {
+      gameId: game.id,
+      dateKey: game.dateKey,
+      rawGameData: {
+        awayTeam: {
+          name: game.awayTeam.name,
+          displayName: game.awayTeam.displayName,
+          id: game.awayTeam.id,
+          logo: game.awayTeam.logo,
+        },
+        homeTeam: {
+          name: game.homeTeam.name,
+          displayName: game.homeTeam.displayName,
+          id: game.homeTeam.id,
+          logo: game.homeTeam.logo,
+        },
+        awayProspects: game.awayProspects?.map(p => ({ name: p.name, team: p.team, teamId: p.teamId })),
+        homeProspects: game.homeProspects?.map(p => ({ name: p.name, team: p.team, teamId: p.teamId })),
+      },
+      leftTeam: {
+        name: leftTeamName,
+        id: leftTeam.id,
+        logo: leftTeam.logo,
+        extractedId: extractTeamIdFromLogo(leftTeam.logo),
+        gameTeamId: leftGameTeamId,
+        trackedPlayers: leftTrackedPlayers.map(p => ({ name: p.playerName, teamId: p.teamId })),
+      },
+      rightTeam: {
+        name: rightTeamName,
+        id: rightTeam.id,
+        logo: rightTeam.logo,
+        extractedId: extractTeamIdFromLogo(rightTeam.logo),
+        gameTeamId: rightGameTeamId,
+        trackedPlayers: rightTrackedPlayers.map(p => ({ name: p.playerName, teamId: p.teamId })),
+      },
+    });
+  }
+  
+  // Create display team objects that explicitly tie logo, name, and tracked players together
+  type DisplayTeam = {
+    id?: string;
+    name: string;
+    logo: string | null;
+    trackedPlayers: typeof leftTrackedPlayers;
+  };
+  
+  // Helper to get correct logo using tracked players' teamIds as source of truth
+  // CRITICAL: Tracked players are already correctly matched to team names, so prefer their teamIds for logos
+  // This prevents logo swaps by constructing logos from tracked players' teamIds when available
+  const getVerifiedLogo = (
+    team: GameWithProspects['awayTeam'], 
+    teamId: string | undefined,
+    trackedPlayers: typeof leftTrackedPlayers,
+    gameTeamId: string | undefined,
+    teamName: string,
+    otherTeamLogo: string | null | undefined,
+    otherTeamName: string
+  ): string | null => {
+    // Get team ID from tracked players (most reliable - already matched correctly to team names)
+    const trackedTeamIds = trackedPlayers
+      .map(p => p.teamId)
+      .filter(Boolean)
+      .filter((id, index, arr) => arr.indexOf(id) === index); // unique
+    
+    // Debug logging for Dayton/Virginia
+    const isDebugGame = isDaytonVirginia && game.dateKey === '2025-12-06';
+    
+    // Priority 1: Tracked players' teamId (most reliable - already matched to team names)
+    if (trackedTeamIds.length > 0) {
+      const logoTeamId = trackedTeamIds[0];
+      const constructedLogo = `https://a.espncdn.com/i/teamlogos/ncaa/500/${logoTeamId}.png`;
+      
+      if (isDebugGame) {
+        console.log(`[getVerifiedLogo] ${teamName}: Using Priority 1 (tracked players' teamId)`, {
+          logoTeamId,
+          constructedLogo,
+          teamLogo: team.logo,
+          matches: team.logo && team.logo.includes(logoTeamId),
+        });
+      }
+      
+      // If team.logo exists and matches logoTeamId, use it (might be higher quality)
+      if (team.logo && team.logo.includes(logoTeamId)) {
+        return team.logo;
+      }
+      
+      return constructedLogo;
+    }
+    
+    // Priority 2: Game's team ID (from game.awayTeam.id or game.homeTeam.id - should be correct if set)
+    // CRITICAL: Always construct logo from gameTeamId, don't trust team.logo which might be swapped
+    if (gameTeamId) {
+      const constructedLogo = `https://a.espncdn.com/i/teamlogos/ncaa/500/${gameTeamId}.png`;
+      
+      if (isDebugGame) {
+        console.log(`[getVerifiedLogo] ${teamName}: Using Priority 2 (gameTeamId)`, {
+          gameTeamId,
+          constructedLogo,
+          teamLogo: team.logo,
+          matches: team.logo && team.logo.includes(gameTeamId),
+        });
+      }
+      
+      // Only use team.logo if it explicitly matches gameTeamId (quick check)
+      if (team.logo && team.logo.includes(gameTeamId)) {
+        return team.logo;
+      }
+      // Always use constructed logo from gameTeamId (most reliable source)
+      return constructedLogo;
+    }
+    
+    // Priority 3: If logos are swapped, try the other team's logo
+    // Heuristic: If this team has tracked players but no teamId, and the other team's logo
+    // might actually belong to this team, try swapping
+    const thisLogoTeamId = extractTeamIdFromLogo(team.logo);
+    const otherLogoTeamId = extractTeamIdFromLogo(otherTeamLogo);
+    
+    if (isDebugGame) {
+      console.log(`[getVerifiedLogo] ${teamName}: Using Priority 3/4 (extract from logo URL)`, {
+        thisLogoTeamId,
+        otherLogoTeamId,
+        teamLogo: team.logo,
+      });
+    }
+    
+    // If we have both logo IDs and they're different, check if they're swapped
+    // This is a heuristic: if this side has no tracked players with teamId but the other side does,
+    // and the logos don't match the expected teams, they might be swapped
+    if (thisLogoTeamId && otherLogoTeamId && thisLogoTeamId !== otherLogoTeamId) {
+      // If this team has tracked players but no teamId, and other team has no tracked players,
+      // try using the other team's logo (might be swapped)
+      if (trackedPlayers.length > 0 && leftTrackedPlayers.length === 0 && rightTrackedPlayers.length === 0) {
+        // Both sides have no tracked players with teamId - can't determine swap
+        // Fall through to use this team's logo
+      } else {
+        // Use this team's logo (might be correct or swapped, but we have no better info)
+        const constructedLogo = `https://a.espncdn.com/i/teamlogos/ncaa/500/${thisLogoTeamId}.png`;
+        return constructedLogo;
+      }
+    }
+    
+    // Priority 4: Extract team ID from team.logo URL (fallback - might be swapped)
+    if (thisLogoTeamId) {
+      const constructedLogo = `https://a.espncdn.com/i/teamlogos/ncaa/500/${thisLogoTeamId}.png`;
+      return constructedLogo;
+    }
+    
+    // Final fallback: use team.logo if it exists
+    if (isDebugGame) {
+      console.log(`[getVerifiedLogo] ${teamName}: Using Final fallback (team.logo)`, {
+        teamLogo: team.logo,
+      });
+    }
+    return team.logo || null;
+  };
+  
+  const leftDisplayTeam: DisplayTeam = {
+    id: leftTeam.id,
+    name: leftTeamName,
+    logo: getVerifiedLogo(leftTeam, leftTeam.id, leftTrackedPlayers, leftGameTeamId, leftTeamName, rightTeam.logo, rightTeamName) || null,
+    trackedPlayers: leftTrackedPlayers,
+  };
+  
+  const rightDisplayTeam: DisplayTeam = {
+    id: rightTeam.id,
+    name: rightTeamName,
+    logo: getVerifiedLogo(rightTeam, rightTeam.id, rightTrackedPlayers, rightGameTeamId, rightTeamName, leftTeam.logo, leftTeamName) || null,
+    trackedPlayers: rightTrackedPlayers,
+  };
+  
+  
+  // Separate myBoard and watchlist players for each side
+  const leftMyBoard = leftDisplayTeam.trackedPlayers.filter(p => p.type === 'myBoard');
+  const leftWatchlist = leftDisplayTeam.trackedPlayers.filter(p => p.type === 'watchlist');
+  const rightMyBoard = rightDisplayTeam.trackedPlayers.filter(p => p.type === 'myBoard');
+  const rightWatchlist = rightDisplayTeam.trackedPlayers.filter(p => p.type === 'watchlist');
+  
+  // Fallback to old system: If tracked players arrays are empty but prospects arrays have players,
+  // use prospects arrays as fallback. This handles cases where decoration didn't find matches.
+  const leftProspects = (leftTrackedPlayers.length > 0 || rightTrackedPlayers.length > 0) ? [] : (game.awayProspects || []);
+  const rightProspects = (leftTrackedPlayers.length > 0 || rightTrackedPlayers.length > 0) ? [] : (game.homeProspects || []);
 
   return (
-    <div id={`game-${game.id}`} className="game-row w-full bg-white" style={{ position: 'relative' }}>
-      {/* Time and Network - top left and top right */}
-      <div className="flex items-center justify-between px-[10px] pt-3 pb-2 gap-2">
-        <span className="text-sm font-medium text-gray-900 text-left max-w-[120px] truncate">{tipoffText}</span>
+    <div id={`game-${game.id}`} className="game-card game-row game-card-inner w-full">
+      {/* Time/Score and Network - top left and top right */}
+      <div className="flex items-center justify-between pt-0 pb-1 gap-2">
+        <div className="flex flex-col items-start">
+          <span className={`game-card-time text-left max-w-[100px] truncate ${isCompleted ? 'font-bold' : ''}`}>
+            {tipoffText}
+          </span>
+          {statusText && (
+            <span className="text-[10px] text-gray-600 font-medium">
+              {statusText}
+            </span>
+          )}
+        </div>
         {game.tv && game.tv !== 'TBA' && (
-          <span className="text-sm font-medium text-gray-700 text-right max-w-[120px] truncate">
+          <span className="game-card-network text-right max-w-[100px] truncate">
             {game.tv}
           </span>
         )}
       </div>
 
       {/* School logos side-by-side, centered */}
-      <div className="flex items-center justify-center gap-3 px-4 pb-12">
-        {/* Away Team */}
+      {/* CRITICAL: Use leftDisplayTeam and rightDisplayTeam for ALL rendering (logo, name, players) */}
+      {/* This ensures logos, names, and players are always aligned */}
+      <div className="flex items-center justify-center gap-2 pb-2">
+        {/* Left Team (Away) */}
         <div className="flex-1 flex flex-col items-center justify-center text-center">
-          {awayLogo ? (
+          {leftDisplayTeam.logo ? (
             <img
-              src={awayLogo}
-              alt={awayTeamName}
-              className={`team-logo mb-2 ${awayLogo.includes('mega-superbet') ? 'logo-enhanced' : ''}`}
-              width={100}
-              height={100}
+              src={leftDisplayTeam.logo}
+              alt={leftDisplayTeam.name}
+              className={`team-logo mb-2 ${leftDisplayTeam.logo.includes('mega-superbet') ? 'logo-enhanced' : ''}`}
+              width={70}
+              height={70}
               loading="lazy"
               decoding="async"
               referrerPolicy="no-referrer"
-              style={awayLogo.includes('mega-superbet') ? {
+              style={leftDisplayTeam.logo.includes('mega-superbet') ? {
                 filter: 'invert(1) drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
                 backgroundColor: 'transparent'
               } : undefined}
@@ -233,40 +466,70 @@ const GameCard = memo(function GameCard({ game, compact = false, rankingSource =
               }}
             />
           ) : (
-            <div className="max-w-[100px] w-auto h-auto flex items-center justify-center bg-gray-100 rounded mb-2">
-              <span className="text-[8px]">🏀</span>
+            <div className="w-[70px] h-[70px] flex items-center justify-center bg-gray-100 rounded mb-2">
+              <span className="text-2xl">🏀</span>
             </div>
           )}
-          <div className="font-semibold text-sm text-gray-800 mb-2 leading-tight px-1">
-            {awayTeamName}
+          <div className="team-name font-medium mb-1 leading-tight px-1">
+            {leftDisplayTeam.name}
           </div>
           <div className="prospects w-full space-y-0.5">
-            {awayProspects.length > 0 &&
-              awayProspects.map((prospect) => (
+            {/* Render myBoard players */}
+            {leftMyBoard.length > 0 &&
+              leftMyBoard.map((tracked) => (
                 <div
-                  key={`away-${prospect.rank}-${prospect.name}`}
-                  className="text-xs text-gray-700 leading-snug"
+                  key={`left-myboard-${tracked.playerId}`}
+                  className="prospect-line text-xs leading-snug"
                 >
-                  {sourceLabel} {prospect.rank}: {prospect.name}
-                  {prospect.jersey ? `, #${prospect.jersey}` : ''}
+                  {sourceLabel} {tracked.rank}: {tracked.playerName}
+                </div>
+              ))}
+            {/* Render watchlist players */}
+            {leftWatchlist.length > 0 && (
+              <div className="prospect-line text-xs leading-snug">
+                Watchlist: {leftWatchlist.map(p => p.playerName).join(', ')}
+              </div>
+            )}
+            {/* Fallback to old system if tracked players not available */}
+            {leftDisplayTeam.trackedPlayers.length === 0 && leftProspects.length > 0 &&
+              leftProspects.map((prospect) => (
+                <div
+                  key={`left-${prospect.rank}-${prospect.name}`}
+                  className="prospect-line text-xs leading-snug"
+                >
+                  {prospect.isWatchlist ? (
+                    <>
+                      Watchlist: {prospect.name}{prospect.jersey ? `, #${prospect.jersey}` : ''}
+                      {prospect.injuryStatus === 'OUT' && (
+                        <span className="ml-2 text-red-600 font-bold text-sm" title="Out - Injured" style={{ color: '#dc2626' }}>O</span>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {sourceLabel} {prospect.rank}: {prospect.name}{prospect.jersey ? `, #${prospect.jersey}` : ''}
+                      {prospect.injuryStatus === 'OUT' && (
+                        <span className="ml-2 text-red-600 font-bold text-sm" title="Out - Injured" style={{ color: '#dc2626' }}>O</span>
+                      )}
+                    </>
+                  )}
                 </div>
               ))}
           </div>
         </div>
 
-        {/* Home Team */}
+        {/* Right Team (Home) */}
         <div className="flex-1 flex flex-col items-center justify-center text-center">
-          {homeLogo ? (
+          {rightDisplayTeam.logo ? (
             <img
-              src={homeLogo}
-              alt={homeTeamName}
-              className={`team-logo mb-2 ${homeLogo.includes('mega-superbet') ? 'logo-enhanced' : ''}`}
-              width={100}
-              height={100}
+              src={rightDisplayTeam.logo}
+              alt={rightDisplayTeam.name}
+              className={`team-logo mb-2 ${rightDisplayTeam.logo.includes('mega-superbet') ? 'logo-enhanced' : ''}`}
+              width={70}
+              height={70}
               loading="lazy"
               decoding="async"
               referrerPolicy="no-referrer"
-              style={homeLogo.includes('mega-superbet') ? {
+              style={rightDisplayTeam.logo.includes('mega-superbet') ? {
                 filter: 'invert(1) drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
                 backgroundColor: 'transparent'
               } : undefined}
@@ -276,58 +539,66 @@ const GameCard = memo(function GameCard({ game, compact = false, rankingSource =
               }}
             />
           ) : (
-            <div className="max-w-[100px] w-auto h-auto flex items-center justify-center bg-gray-100 rounded mb-2">
-              <span className="text-[8px]">🏀</span>
+            <div className="w-[70px] h-[70px] flex items-center justify-center bg-gray-100 rounded mb-2">
+              <span className="text-2xl">🏀</span>
             </div>
           )}
-          <div className="font-semibold text-sm text-gray-800 mb-2 leading-tight px-1">
-            {homeTeamName}
+          <div className="team-name font-medium mb-1 leading-tight px-1">
+            {rightDisplayTeam.name}
           </div>
           <div className="prospects w-full space-y-0.5">
-            {homeProspects.length > 0 &&
-              homeProspects.map((prospect) => (
+            {/* Render myBoard players */}
+            {rightMyBoard.length > 0 &&
+              rightMyBoard.map((tracked) => (
                 <div
-                  key={`home-${prospect.rank}-${prospect.name}`}
-                  className="text-xs text-gray-700 leading-snug"
+                  key={`right-myboard-${tracked.playerId}`}
+                  className="prospect-line text-xs leading-snug"
                 >
-                  {sourceLabel} {prospect.rank}: {prospect.name}
-                  {prospect.jersey ? `, #${prospect.jersey}` : ''}
+                  {sourceLabel} {tracked.rank}: {tracked.playerName}
+                </div>
+              ))}
+            {/* Render watchlist players */}
+            {rightWatchlist.length > 0 && (
+              <div className="prospect-line text-xs leading-snug">
+                Watchlist: {rightWatchlist.map(p => p.playerName).join(', ')}
+              </div>
+            )}
+            {/* Fallback to old system if tracked players not available */}
+            {rightDisplayTeam.trackedPlayers.length === 0 && rightProspects.length > 0 &&
+              rightProspects.map((prospect) => (
+                <div
+                  key={`right-${prospect.rank}-${prospect.name}`}
+                  className="prospect-line text-xs leading-snug"
+                >
+                  {prospect.isWatchlist ? (
+                    <>
+                      Watchlist: {prospect.name}{prospect.jersey ? `, #${prospect.jersey}` : ''}
+                      {prospect.injuryStatus === 'OUT' && (
+                        <span className="ml-2 text-red-600 font-bold text-sm" title="Out - Injured" style={{ color: '#dc2626' }}>O</span>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {sourceLabel} {prospect.rank}: {prospect.name}{prospect.jersey ? `, #${prospect.jersey}` : ''}
+                      {prospect.injuryStatus === 'OUT' && (
+                        <span className="ml-2 text-red-600 font-bold text-sm" title="Out - Injured" style={{ color: '#dc2626' }}>O</span>
+                      )}
+                    </>
+                  )}
                 </div>
               ))}
           </div>
         </div>
       </div>
 
-      {/* Action buttons - bottom right */}
+      {/* Action buttons - below prospects */}
       {isSignedIn && (
-        <div 
-          style={{
-            position: 'absolute',
-            bottom: '8px',
-            right: '8px',
-            display: 'flex',
-            gap: '6px',
-            backgroundColor: 'rgba(255, 255, 255, 0.95)',
-            padding: '4px',
-            borderRadius: '6px',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-            zIndex: 10,
-          }}
-        >
+        <div className="flex items-center justify-center gap-2 pt-2 pb-0">
           {/* Eye icon for watched status */}
           <button
             onClick={handleToggleWatch}
             disabled={isTogglingWatch}
-            style={{
-              padding: '4px',
-              border: 'none',
-              background: 'transparent',
-              cursor: 'pointer',
-              borderRadius: '4px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
+            className="icon-button"
             title={watched ? 'Mark as unwatched' : 'Mark as watched'}
             aria-label={watched ? 'Mark as unwatched' : 'Mark as watched'}
           >
@@ -336,8 +607,8 @@ const GameCard = memo(function GameCard({ game, compact = false, rankingSource =
               height="20" 
               viewBox="0 0 24 24" 
               fill="none" 
-              stroke={watched ? '#16a34a' : '#6b7280'}
-              strokeWidth="2"
+              stroke="#6b7280"
+              strokeWidth={watched ? '3' : '2'}
               strokeLinecap="round"
               strokeLinejoin="round"
             >
@@ -348,17 +619,8 @@ const GameCard = memo(function GameCard({ game, compact = false, rankingSource =
           {/* Compose icon for notes */}
           <button
             onClick={handleOpenNotes}
-            style={{
-              padding: '4px',
-              border: 'none',
-              background: 'transparent',
-              cursor: 'pointer',
-              borderRadius: '4px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: hasNote ? '#ea580c' : '#6b7280',
-            }}
+            className="icon-button"
+            style={{ color: hasNote ? '#ea580c' : 'var(--text-meta)', fontSize: '18px' }}
             title={hasNote ? 'Edit note' : 'Add note'}
             aria-label={hasNote ? 'Edit note' : 'Add note'}
           >

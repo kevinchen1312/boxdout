@@ -1,5 +1,5 @@
 import { auth } from '@clerk/nextjs/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     }
 
     // Get user's Supabase ID
-    const { data: userData, error: userError } = await supabase
+    const { data: userData, error: userError } = await supabaseAdmin
       .from('users')
       .select('id')
       .eq('clerk_user_id', userId)
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     }
 
     // Check if already watched
-    const { data: existing } = await supabase
+    const { data: existing } = await supabaseAdmin
       .from('watched_games')
       .select('id')
       .eq('user_id', userData.id)
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
 
     if (existing) {
       // Remove watch
-      const { error: deleteError } = await supabase
+      const { error: deleteError } = await supabaseAdmin
         .from('watched_games')
         .delete()
         .eq('user_id', userData.id)
@@ -50,7 +50,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ watched: false });
     } else {
       // Add watch
-      const { error: insertError } = await supabase
+      const { error: insertError } = await supabaseAdmin
         .from('watched_games')
         .insert({
           user_id: userData.id,
@@ -69,4 +69,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+
 

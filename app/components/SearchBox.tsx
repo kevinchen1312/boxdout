@@ -10,9 +10,19 @@ import type { TeamItem } from '@/lib/search/tokens';
 import type { ProspectItem } from '@/lib/search/prospectCatalog';
 import type { GameWithProspects } from '../utils/gameMatching';
 
+type WatchlistPlayer = {
+  id: string;
+  name: string;
+  subtitle: string;
+  team?: string;
+  league?: string;
+  rank?: number;
+};
+
 type SearchResult = 
   | { type: 'team'; item: TeamItem }
-  | { type: 'prospect'; item: ProspectItem };
+  | { type: 'prospect'; item: ProspectItem }
+  | { type: 'watchlist_player'; item: WatchlistPlayer };
 
 export default function SearchBox({
   allGamesFull,               // FULL annotated season list (array of ALL games)
@@ -89,6 +99,7 @@ export default function SearchBox({
   const [dq, setDQ] = useState('');
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1); // -1 = none
+  const [watchlistResults, setWatchlistResults] = useState<WatchlistPlayer[]>([]);
   const listRef = useRef<HTMLDivElement | null>(null);
   const itemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -98,7 +109,37 @@ export default function SearchBox({
     return () => clearTimeout(t); 
   }, [q]);
 
-  // Combine team and prospect results - optimized to avoid unnecessary sorting
+  // Fetch watchlist players when query changes
+  useEffect(() => {
+    if (!dq.trim() || dq.length < 2) {
+      setWatchlistResults([]);
+      return;
+    }
+
+    let cancelled = false;
+    const fetchWatchlist = async () => {
+      try {
+        const res = await fetch(`/api/search/watchlist?q=${encodeURIComponent(dq)}`);
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (!cancelled) {
+          setWatchlistResults(data.results || []);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error('Failed to fetch watchlist players:', err);
+          setWatchlistResults([]);
+        }
+      }
+    };
+
+    fetchWatchlist();
+    return () => {
+      cancelled = true;
+    };
+  }, [dq]);
+
+  // Combine team, prospect, and watchlist results - optimized to avoid unnecessary sorting
   const results = useMemo(() => {
     if (!dq.trim()) return [];
     
@@ -106,7 +147,7 @@ export default function SearchBox({
     const prospectResults = resolveProspects(dq, prospectCatalog);
     
     // Pre-allocate array with known size
-    const combined: SearchResult[] = new Array(teamResults.length + prospectResults.length);
+    const combined: SearchResult[] = new Array(teamResults.length + prospectResults.length + watchlistResults.length);
     let idx = 0;
     
     // Add teams first (already sorted by resolveTeams)
@@ -119,8 +160,13 @@ export default function SearchBox({
       combined[idx++] = { type: 'prospect' as const, item: prospectResults[i] };
     }
     
+    // Add watchlist players
+    for (let i = 0; i < watchlistResults.length; i++) {
+      combined[idx++] = { type: 'watchlist_player' as const, item: watchlistResults[i] };
+    }
+    
     return combined;
-  }, [dq, teamCatalog, prospectCatalog]);
+  }, [dq, teamCatalog, prospectCatalog, watchlistResults]);
 
   // Open/close logic
   useEffect(() => {
@@ -226,6 +272,14 @@ export default function SearchBox({
         const selected = results[active];
         if (selected.type === 'team') {
           onPickTeam(selected.item);
+        } else if (selected.type === 'watchlist_player') {
+          // Navigate to prospect view (like regular prospects)
+          onPickProspect({ 
+            canon: plain(selected.item.name), 
+            label: selected.item.name, 
+            tokens: tokenize(selected.item.name), 
+            rank: selected.item.rank 
+          });
         } else {
           onPickProspect(selected.item);
         }
@@ -246,6 +300,14 @@ export default function SearchBox({
     if (pick) {
       if (pick.type === 'team') {
         onPickTeam(pick.item);
+      } else if (pick.type === 'watchlist_player') {
+        // Navigate to prospect view (like regular prospects)
+        onPickProspect({ 
+          canon: plain(pick.item.name), 
+          label: pick.item.name, 
+          tokens: tokenize(pick.item.name), 
+          rank: pick.item.rank 
+        });
       } else {
         onPickProspect(pick.item);
       }
@@ -258,7 +320,7 @@ export default function SearchBox({
     <div className="relative">
       <input
         ref={inputRef}
-        type="search"
+        type="text"
         value={q}
         onChange={(e) => setQ(e.target.value)}
         onKeyDown={onKeyDown}
@@ -267,7 +329,7 @@ export default function SearchBox({
         aria-autocomplete="list"
         role="combobox"
         placeholder="Search school or player (e.g., Kansas, Dybantsa)…"
-        className="border rounded-md px-3 py-1.5"
+        className="planner-search-input"
           aria-label="Search by school or player"
       />
       {open && results.length > 0 && (
@@ -275,11 +337,14 @@ export default function SearchBox({
           id="search-suggestions"
           ref={listRef}
           role="listbox"
-          className="absolute z-50 mt-1 w-[320px] max-h-72 overflow-auto bg-white border rounded-md shadow"
+          className="absolute z-50 mt-1 w-[320px] max-h-72 overflow-auto"
+          style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-small)', boxShadow: 'var(--shadow-soft)' }}
         >
           {results.slice(0, 10).map((r, i) => {
             const isActive = i === active;
-            const key = `${r.type}-${r.item.canon}`;
+            const key = r.type === 'watchlist_player' 
+              ? `watchlist-${r.item.id}` 
+              : `${r.type}-${r.item.canon}`;
             return (
               <button
                 key={key}
@@ -291,6 +356,14 @@ export default function SearchBox({
                 onClick={() => {
                   if (r.type === 'team') {
                     onPickTeam(r.item);
+                  } else if (r.type === 'watchlist_player') {
+                    // Navigate to prospect view (like regular prospects)
+                    onPickProspect({ 
+                      canon: plain(r.item.name), 
+                      label: r.item.name, 
+                      tokens: tokenize(r.item.name), 
+                      rank: r.item.rank 
+                    });
                   } else {
                     onPickProspect(r.item);
                   }
@@ -299,14 +372,48 @@ export default function SearchBox({
                 }}
                 className={`w-full text-left px-3 py-2 flex items-center gap-2 ${
                   isActive 
-                    ? 'bg-blue-100 border-l-4 border-blue-500 font-semibold' 
-                    : 'hover:bg-neutral-50'
+                    ? 'font-semibold' 
+                    : ''
                 }`}
-                style={isActive ? { backgroundColor: '#dbeafe', borderLeft: '4px solid #3b82f6' } : undefined}
+                style={isActive ? { backgroundColor: 'rgba(138, 43, 226, 0.1)', borderLeft: '3px solid var(--accent)' } : { backgroundColor: 'transparent' }}
+                onMouseEnter={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.08)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isActive) {
+                    e.currentTarget.style.backgroundColor = 'transparent';
+                  }
+                }}
               >
-                <span>{r.item.label}</span>
-                {r.type === 'prospect' && r.item.rank && (
-                  <span className="text-xs text-gray-500 ml-auto">#{r.item.rank}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="truncate">{r.type === 'watchlist_player' ? r.item.name : r.item.label}</span>
+                    {r.type === 'watchlist_player' && (
+                      <span 
+                        className="text-xs px-1.5 py-0.5 rounded"
+                        style={{ 
+                          backgroundColor: 'rgba(138, 43, 226, 0.1)', 
+                          color: 'var(--accent)',
+                          border: '1px solid rgba(138, 43, 226, 0.2)',
+                          fontSize: '10px',
+                          fontWeight: '500',
+                          flexShrink: 0,
+                        }}
+                      >
+                        Watchlist
+                      </span>
+                    )}
+                  </div>
+                  {r.type === 'watchlist_player' && r.item.subtitle && (
+                    <div className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                      {r.item.subtitle}
+                    </div>
+                  )}
+                </div>
+                {(r.type === 'prospect' && r.item.rank) && (
+                  <span className="meta-text text-xs ml-auto flex-shrink-0">#{r.item.rank}</span>
                 )}
               </button>
             );
@@ -314,7 +421,7 @@ export default function SearchBox({
         </div>
       )}
       {open && results.length === 0 && (
-        <div className="absolute z-50 mt-1 w-[320px] bg-white border rounded-md shadow px-3 py-2 text-sm text-neutral-600">
+        <div className="absolute z-50 mt-1 w-[320px] px-3 py-2 text-sm" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-small)', boxShadow: 'var(--shadow-soft)', color: 'var(--text-meta)' }}>
           No match found. Try a team name (Kansas, KU) or player name (Dybantsa).
         </div>
       )}

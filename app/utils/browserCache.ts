@@ -28,14 +28,44 @@ export function getCachedData<T>(key: string): T | null {
     
     // Check if cache has expired
     if (now > entry.expiresAt) {
-      localStorage.removeItem(cacheKey);
-      return null;
+      // Don't remove expired cache - we'll use it as stale data
+      console.log(`[Cache] Expired for ${key}, age: ${Math.round((now - entry.timestamp) / 1000)}s (but keeping for stale display)`);
+      return entry.data; // Return stale data instead of null
     }
     
     console.log(`[Cache] Hit for ${key}, age: ${Math.round((now - entry.timestamp) / 1000)}s`);
     return entry.data;
   } catch (error) {
     console.error('[Cache] Error reading from cache:', error);
+    return null;
+  }
+}
+
+/**
+ * Get stale cache data even if expired (for immediate display while fresh data loads)
+ */
+export function getStaleCachedData<T>(key: string): T | null {
+  try {
+    const cacheKey = CACHE_PREFIX + key;
+    const cached = localStorage.getItem(cacheKey);
+    
+    if (!cached) {
+      return null;
+    }
+    
+    const entry: CacheEntry<T> = JSON.parse(cached);
+    const now = Date.now();
+    const age = Math.round((now - entry.timestamp) / 1000);
+    
+    if (now > entry.expiresAt) {
+      console.log(`[Cache] Using stale data for ${key}, age: ${age}s`);
+    } else {
+      console.log(`[Cache] Using fresh data for ${key}, age: ${age}s`);
+    }
+    
+    return entry.data;
+  } catch (error) {
+    console.error('[Cache] Error reading stale cache:', error);
     return null;
   }
 }
@@ -152,6 +182,19 @@ export function clearOldCache(keepCount: number = 5): void {
 }
 
 /**
+ * Clear a specific cache entry by key (without prefix)
+ */
+export function clearCacheByKey(key: string): void {
+  try {
+    const cacheKey = CACHE_PREFIX + key;
+    localStorage.removeItem(cacheKey);
+    console.log(`[Cache] Cleared cache entry: ${key}`);
+  } catch (error) {
+    console.error('[Cache] Error clearing cache by key:', error);
+  }
+}
+
+/**
  * Clear all cache entries
  */
 export function clearAllCache(): void {
@@ -200,4 +243,9 @@ export function getCacheStats(): { count: number; size: number; entries: Array<{
     entries: entries.sort((a, b) => b.size - a.size),
   };
 }
+
+
+
+
+
 

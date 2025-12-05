@@ -1,37 +1,69 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useUser } from '@clerk/nextjs';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, formatDistanceToNow } from 'date-fns';
+import AddFriendsModal from './AddFriendsModal';
+import { LoadingSpinner } from './ui/LoadingSpinner';
 
-interface FriendWatchedGame {
-  game_id: string;
-  watched_at: string;
-  game_date: string;
-  user: {
-    id: string;
-    username: string | null;
-    email: string;
-  };
-}
-
-interface Note {
+interface ActivityItem {
+  type: 'watched' | 'note';
   id: string;
-  content: string;
-  game_id: string;
-  visibility: string;
-  created_at: string;
   user: {
     id: string;
     username: string | null;
     email: string;
   };
+  gameId: string | null;
+  gameDate?: string;
+  content?: string;
+  timestamp: string;
 }
 
-export default function FriendActivity() {
-  const [friendsWatched, setFriendsWatched] = useState<FriendWatchedGame[]>([]);
+interface FriendActivityProps {
+  games?: Record<string, any>;
+}
+
+function formatRelativeTime(timestamp: string): string {
+  try {
+    const date = parseISO(timestamp);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffHours = diffMs / (1000 * 60 * 60);
+    
+    if (diffHours < 1) {
+      const diffMins = Math.floor(diffMs / (1000 * 60));
+      return diffMins < 1 ? 'Just now' : `${diffMins}m ago`;
+    }
+    if (diffHours < 24) {
+      return `${Math.floor(diffHours)}h ago`;
+    }
+    if (diffHours < 48) {
+      return 'Yesterday';
+    }
+    return formatDistanceToNow(date, { addSuffix: true });
+  } catch {
+    return timestamp;
+  }
+}
+
+function getInitials(user: { username: string | null; email: string }): string {
+  if (user.username) {
+    return user.username.substring(0, 2).toUpperCase();
+  }
+  return user.email.substring(0, 2).toUpperCase();
+}
+
+function getName(user: { username: string | null; email: string }): string {
+  return user.username || user.email.split('@')[0];
+}
+
+export default function FriendActivity({ games = {} }: FriendActivityProps) {
+  const [activityItems, setActivityItems] = useState<ActivityItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);
+  const [isAddFriendsOpen, setIsAddFriendsOpen] = useState(false);
+  const [hasFriends, setHasFriends] = useState(false);
   const { isSignedIn } = useUser();
 
   useEffect(() => {
@@ -43,11 +75,12 @@ export default function FriendActivity() {
   const loadFriendActivity = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/watched/friends');
+      const response = await fetch('/api/activity/friends');
       const data = await response.json();
       
-      if (response.ok && data.friendsWatched) {
-        setFriendsWatched(data.friendsWatched);
+      if (response.ok && data.items) {
+        setActivityItems(data.items);
+        setHasFriends(data.hasFriends === true);
       }
     } catch (err) {
       console.error('Error loading friend activity:', err);
@@ -60,64 +93,83 @@ export default function FriendActivity() {
     return null;
   }
 
-  return (
-    <div className="bg-white rounded-lg shadow-lg overflow-hidden max-w-4xl mx-auto">
-      {/* Header */}
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full px-4 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 transition-colors flex items-center justify-between text-left"
-      >
-        <div className="flex items-center gap-2">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-blue-600">
-            <path d="M4.5 6.375a4.125 4.125 0 1 1 8.25 0 4.125 4.125 0 0 1-8.25 0ZM14.25 8.625a3.375 3.375 0 1 1 6.75 0 3.375 3.375 0 0 1-6.75 0ZM1.5 19.125a7.125 7.125 0 0 1 14.25 0v.003l-.001.119a.75.75 0 0 1-.363.63 13.067 13.067 0 0 1-6.761 1.873c-2.472 0-4.786-.684-6.76-1.873a.75.75 0 0 1-.364-.63l-.001-.122ZM17.25 19.128l-.001.144a2.25 2.25 0 0 1-.233.96 10.088 10.088 0 0 0 5.06-1.01.75.75 0 0 0 .42-.643 4.875 4.875 0 0 0-6.957-4.611 8.586 8.586 0 0 1 1.71 5.157v.003Z" />
-          </svg>
-          <span className="font-semibold text-gray-900">Friend Activity</span>
-        </div>
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-          strokeWidth={2}
-          stroke="currentColor"
-          className={`w-5 h-5 flex-shrink-0 text-gray-600 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-          style={{ width: '20px', height: '20px', minWidth: '20px', minHeight: '20px' }}
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-        </svg>
-      </button>
+  // Enrich activity items with game info
+  const enrichedItems = useMemo(() => {
+    return activityItems.map(item => {
+      const game = item.gameId ? games[item.gameId] : null;
+      return { ...item, game };
+    });
+  }, [activityItems, games]);
 
-      {/* Content */}
-      {isExpanded && (
-        <div className="p-4 max-h-96 overflow-y-auto">
+  return (
+    <>
+      <div className="friend-card">
+        {/* Header */}
+        <div className="friend-card-header">
+          <div className="friend-card-title">
+            <span className="friend-card-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="16" height="16" style={{ color: 'var(--text-secondary)' }}>
+                <path d="M4.5 6.375a4.125 4.125 0 1 1 8.25 0 4.125 4.125 0 0 1-8.25 0ZM14.25 8.625a3.375 3.375 0 1 1 6.75 0 3.375 3.375 0 0 1-6.75 0ZM1.5 19.125a7.125 7.125 0 0 1 14.25 0v.003l-.001.119a.75.75 0 0 1-.363.63 13.067 13.067 0 0 1-6.761 1.873c-2.472 0-4.786-.684-6.76-1.873a.75.75 0 0 1-.364-.63l-.001-.122ZM17.25 19.128l-.001.144a2.25 2.25 0 0 1-.233.96 10.088 10.088 0 0 0 5.06-1.01.75.75 0 0 0 .42-.643 4.875 4.875 0 0 0-6.957-4.611 8.586 8.586 0 0 1 1.71 5.157v.003Z" />
+              </svg>
+            </span>
+            <span>Friend Activity</span>
+          </div>
+          <button
+            className="friend-add-button"
+            onClick={() => setIsAddFriendsOpen(true)}
+          >
+            + Add Friends
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="friend-card-body">
           {isLoading ? (
-            <div className="text-center py-8 text-gray-500">Loading...</div>
-          ) : friendsWatched.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <p className="mb-2">No recent friend activity.</p>
-              <p className="text-sm">Add friends to see what they&apos;re watching!</p>
-            </div>
+            <LoadingSpinner label="Loading activity…" />
+          ) : !hasFriends && enrichedItems.length === 0 ? (
+            <p className="friend-empty">
+              Add friends to see what they&apos;re watching and posting.
+            </p>
+          ) : enrichedItems.length === 0 ? (
+            <p className="friend-empty">
+              No recent activity from friends yet.
+            </p>
           ) : (
-            <div className="space-y-3">
-              {friendsWatched.map((item, index) => (
-                <div key={`${item.game_id}-${index}`} className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-                  <div className="flex-shrink-0 mt-1">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 text-blue-600">
-                      <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" />
-                      <path fillRule="evenodd" d="M1.323 11.447C2.811 6.976 7.028 3.75 12.001 3.75c4.97 0 9.185 3.223 10.675 7.69.12.362.12.752 0 1.113-1.487 4.471-5.705 7.697-10.677 7.697-4.97 0-9.186-3.223-10.675-7.69a1.762 1.762 0 0 1 0-1.113ZM17.25 12a5.25 5.25 0 1 1-10.5 0 5.25 5.25 0 0 1 10.5 0Z" clipRule="evenodd" />
-                    </svg>
+            <div className="friend-activity-list">
+              {enrichedItems.map((item) => (
+                <div key={`${item.type}-${item.id}`} className="friend-activity-row">
+                  <div className="friend-activity-avatar">
+                    {getInitials(item.user)}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline gap-2 mb-1">
-                      <span className="font-medium text-gray-900 truncate">
-                        {item.user.username || item.user.email}
-                      </span>
-                      <span className="text-xs text-gray-500">watched a game</span>
+                  <div className="friend-activity-main">
+                    <div className="friend-activity-text">
+                      {item.type === 'watched' && (
+                        <>
+                          <strong>{getName(item.user)}</strong> watched{' '}
+                          {item.game ? (
+                            <span>
+                              {item.game.awayTeam?.displayName || item.game.awayTeam?.name || 'Away'} vs{' '}
+                              {item.game.homeTeam?.displayName || item.game.homeTeam?.name || 'Home'}
+                            </span>
+                          ) : (
+                            <span>a game</span>
+                          )}
+                        </>
+                      )}
+                      {item.type === 'note' && (
+                        <>
+                          <strong>{getName(item.user)}</strong> posted a note
+                          {item.game && (
+                            <> on <span>
+                              {item.game.awayTeam?.displayName || item.game.awayTeam?.name || 'Away'} vs{' '}
+                              {item.game.homeTeam?.displayName || item.game.homeTeam?.name || 'Home'}
+                            </span></>
+                          )}
+                        </>
+                      )}
                     </div>
-                    <div className="text-sm text-gray-600">
-                      Game {item.game_date}
-                    </div>
-                    <div className="text-xs text-gray-400 mt-1">
-                      {format(parseISO(item.watched_at), 'MMM d, h:mm a')}
+                    <div className="friend-activity-meta">
+                      {formatRelativeTime(item.timestamp)}
                     </div>
                   </div>
                 </div>
@@ -125,8 +177,16 @@ export default function FriendActivity() {
             </div>
           )}
         </div>
-      )}
-    </div>
+      </div>
+
+      <AddFriendsModal
+        isOpen={isAddFriendsOpen}
+        onClose={() => setIsAddFriendsOpen(false)}
+        onFriendAdded={() => {
+          loadFriendActivity();
+        }}
+      />
+    </>
   );
 }
 

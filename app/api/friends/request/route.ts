@@ -1,5 +1,5 @@
 import { auth } from '@clerk/nextjs/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
@@ -17,7 +17,7 @@ export async function POST(req: Request) {
     }
 
     // Get sender's Supabase ID
-    const { data: senderData, error: senderError } = await supabase
+    const { data: senderData, error: senderError } = await supabaseAdmin
       .from('users')
       .select('id')
       .eq('clerk_user_id', userId)
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
     }
 
     // Get receiver's Supabase ID by username
-    const { data: receiverData, error: receiverError } = await supabase
+    const { data: receiverData, error: receiverError } = await supabaseAdmin
       .from('users')
       .select('id')
       .eq('username', receiverUsername)
@@ -44,7 +44,7 @@ export async function POST(req: Request) {
     }
 
     // Check if already friends
-    const { data: existingFriendship } = await supabase
+    const { data: existingFriendship } = await supabaseAdmin
       .from('friends')
       .select('id')
       .or(`and(user1_id.eq.${senderData.id},user2_id.eq.${receiverData.id}),and(user1_id.eq.${receiverData.id},user2_id.eq.${senderData.id})`)
@@ -55,7 +55,7 @@ export async function POST(req: Request) {
     }
 
     // Check if request already exists
-    const { data: existingRequest } = await supabase
+    const { data: existingRequest } = await supabaseAdmin
       .from('friend_requests')
       .select('id, status')
       .or(`and(sender_id.eq.${senderData.id},receiver_id.eq.${receiverData.id}),and(sender_id.eq.${receiverData.id},receiver_id.eq.${senderData.id})`)
@@ -68,7 +68,7 @@ export async function POST(req: Request) {
     }
 
     // Create friend request
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('friend_requests')
       .insert({
         sender_id: senderData.id,
@@ -89,4 +89,5 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+
 

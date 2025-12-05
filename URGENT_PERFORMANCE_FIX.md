@@ -203,3 +203,8 @@ The calendar should now load in **1-2 seconds** instead of 30+! 🚀
 
 Try it now and let me know if it's finally fast!
 
+
+
+
+
+

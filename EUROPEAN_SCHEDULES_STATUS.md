@@ -105,3 +105,8 @@ To quickly check if current times are reasonable:
 
 The current times in the schedules follow these patterns, suggesting they may be approximately correct despite coming from RealGM.
 
+
+
+
+
+

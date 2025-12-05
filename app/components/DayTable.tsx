@@ -13,9 +13,10 @@ interface DayTableProps {
   games: GameWithProspects[];
   rankingSource?: RankingSource;
   onOpenNotes?: (game: GameWithProspects) => void;
+  gameStatuses?: Map<string, { watched: boolean; hasNote: boolean }>;
 }
 
-const DayTable = memo(function DayTable({ date, games, rankingSource = 'espn', onOpenNotes }: DayTableProps) {
+const DayTable = memo(function DayTable({ date, games, rankingSource = 'espn', onOpenNotes, gameStatuses }: DayTableProps) {
   const dateKey = localYMD(date);
   const isToday = dateKey === localYMD(new Date());
 
@@ -28,7 +29,7 @@ const DayTable = memo(function DayTable({ date, games, rankingSource = 'espn', o
           <span className="date-sub">{format(date, 'MMM d')}</span>
         </div>
         {isToday && (
-          <div className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-600">
+          <div className="rounded-full bg-gray-100 px-3 py-1 text-xs font-semibold text-gray-700">
             Today
           </div>
         )}
@@ -36,9 +37,19 @@ const DayTable = memo(function DayTable({ date, games, rankingSource = 'espn', o
 
       {games.length > 0 ? (
         <div className="day-table">
-          {games.map((game) => (
-            <GameRow key={game.id} game={game} rankingSource={rankingSource} onOpenNotes={onOpenNotes} />
-          ))}
+          {games.map((game) => {
+            const status = gameStatuses?.get(game.id);
+            return (
+              <GameRow 
+                key={game.id} 
+                game={game} 
+                rankingSource={rankingSource} 
+                onOpenNotes={onOpenNotes}
+                watched={status?.watched}
+                hasNote={status?.hasNote}
+              />
+            );
+          })}
         </div>
       ) : (
         <div className="day-table p-4 text-center text-xs font-medium text-gray-500">

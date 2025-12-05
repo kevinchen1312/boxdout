@@ -40,8 +40,15 @@ export default function Home() {
       setRankingSource('myboard');
     }
   }, []);
+
+  // Toggle ranking source
+  const handleToggleRankingSource = () => {
+    const newSource: RankingSource = rankingSource === 'espn' ? 'myboard' : 'espn';
+    setRankingSource(newSource);
+    localStorage.setItem('useMyBoard', newSource === 'myboard' ? 'true' : 'false');
+  };
   
-  const { games, loading, error, loadingMessage, fetchGames } = useGames({ source: rankingSource });
+  const { games, loading, error, loadingMessage, updating, fetchGames, refresh, updateProspectRanks } = useGames({ source: rankingSource });
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(() => toLocalMidnight(new Date()));
   const [viewMode, setViewMode] = useState<ViewMode>('day');
@@ -49,6 +56,7 @@ export default function Home() {
   const [selectedProspect, setSelectedProspect] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [notesPanelGame, setNotesPanelGame] = useState<GameWithProspects | null>(null);
+  const [gameStatuses, setGameStatuses] = useState<Map<string, { watched: boolean; hasNote: boolean }>>(new Map());
   const dateRangeRef = useRef<{ start: string; end: string } | null>(null);
 
   // Flatten all games from all dates (for SearchBox catalog) - optimized
@@ -61,6 +69,15 @@ export default function Home() {
     }
     return flat;
   }, [games]);
+
+  // Create games by ID map for FriendActivity
+  const allGamesById = useMemo(() => {
+    const gamesMap: Record<string, GameWithProspects> = {};
+    allGames.forEach(game => {
+      gamesMap[game.id] = game;
+    });
+    return gamesMap;
+  }, [allGames]);
 
 
   // Build team index once
@@ -90,6 +107,60 @@ export default function Home() {
     }
     return map;
   }, [games]);
+
+  // Listen for rankings updates and update ranks INSTANTLY using provided data
+  // Use both localStorage polling (works across routes) and event listener (for same-page)
+  useEffect(() => {
+    console.log('[page] Setting up rankingsUpdated listeners, current rankingSource:', rankingSource);
+    
+    const handleRankingsUpdate = (rankings: Array<{ name: string; team: string; teamDisplay?: string; rank: number; isWatchlist?: boolean }>) => {
+      if (rankingSource === 'myboard' && rankings && rankings.length > 0) {
+        console.log('[page] ✓ Using provided rankings for INSTANT update, count:', rankings.length);
+        const dashDaniels = rankings.find(r => r.name.toLowerCase().includes('dash'));
+        if (dashDaniels) {
+          console.log('[page] Dash Daniels in rankings:', dashDaniels);
+        }
+        updateProspectRanks(rankings);
+      }
+    };
+    
+    // Event listener for same-page updates
+    const handleEvent = (event: Event) => {
+      const customEvent = event as CustomEvent<{ source: string; rankings?: Array<{ name: string; team: string; teamDisplay?: string; rank: number; isWatchlist?: boolean }> }>;
+      console.log('[page] ✓✓✓ Rankings updated event received!');
+      if (customEvent.detail?.rankings) {
+        handleRankingsUpdate(customEvent.detail.rankings);
+      }
+    };
+    
+    window.addEventListener('rankingsUpdated', handleEvent);
+    
+    // Poll localStorage for cross-route updates (check every 100ms)
+    let lastTimestamp = 0;
+    const pollInterval = setInterval(() => {
+      try {
+        const stored = localStorage.getItem('rankingsUpdated');
+        if (stored) {
+          const data = JSON.parse(stored);
+          // Only process if newer than last processed
+          if (data.timestamp > lastTimestamp && data.source === 'myboard' && data.rankings) {
+            console.log('[page] ✓✓✓ Rankings update found in localStorage!');
+            lastTimestamp = data.timestamp;
+            handleRankingsUpdate(data.rankings);
+          }
+        }
+      } catch (err) {
+        // Ignore localStorage errors
+      }
+    }, 100); // Check every 100ms for instant updates
+    
+    console.log('[page] ✓ Event listener and localStorage polling set up');
+    
+    return () => {
+      window.removeEventListener('rankingsUpdated', handleEvent);
+      clearInterval(pollInterval);
+    };
+  }, [updateProspectRanks, rankingSource]);
 
   // URL deep linking - hydrate from URL on load (separate from ranking source)
   useEffect(() => {
@@ -169,12 +240,24 @@ export default function Home() {
     const out: GameWithProspects[] = [];
     const seen = new Set<string>();
 
+    // Normalize prospect name for matching (same as trackedPlayers.ts)
+    const normalizedSearchName = selectedProspect.toLowerCase().trim();
+
     for (const arr of Object.values(games)) {
       for (const g of arr) {
-        if (
-          (g.prospects || []).some((p) => p.name === selectedProspect) &&
-          !seen.has(g.id)
-        ) {
+        // Check tracked players arrays first (new system)
+        const hasProspectInTracked = 
+          (g.homeTrackedPlayers || []).some((p) => p.playerName.toLowerCase().trim() === normalizedSearchName) ||
+          (g.awayTrackedPlayers || []).some((p) => p.playerName.toLowerCase().trim() === normalizedSearchName);
+        
+        // Fallback to old system if tracked players not available
+        const hasProspectInOldSystem = !hasProspectInTracked && (
+          (g.prospects || []).some((p) => p.name.toLowerCase().trim() === normalizedSearchName) ||
+          (g.homeProspects || []).some((p) => p.name.toLowerCase().trim() === normalizedSearchName) ||
+          (g.awayProspects || []).some((p) => p.name.toLowerCase().trim() === normalizedSearchName)
+        );
+        
+        if ((hasProspectInTracked || hasProspectInOldSystem) && !seen.has(g.id)) {
           seen.add(g.id);
           out.push(g);
         }
@@ -201,28 +284,75 @@ export default function Home() {
     handleDateChange(start, end);
   }, [selectedDate, handleDateChange]);
 
+  // Fetch game statuses (watched + notes) once when games are loaded and user is signed in
+  useEffect(() => {
+    if (!isSignedIn || !allGames.length) {
+      setGameStatuses(new Map());
+      return;
+    }
+
+    const gameIds = allGames.map(g => g.id);
+    if (gameIds.length === 0) return;
+
+    fetch('/api/games/status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gameIds }),
+    })
+      .then(res => {
+        if (!res.ok) {
+          // If endpoint doesn't exist (404) or other error, return empty data
+          console.warn(`Game status endpoint returned ${res.status}, using empty statuses`);
+          return { watchedGames: [], notesByGame: {} };
+        }
+        return res.json();
+      })
+      .then(data => {
+        const watchedSet = new Set((data.watchedGames || []).map((w: { game_id: string }) => w.game_id));
+        const statusMap = new Map<string, { watched: boolean; hasNote: boolean }>();
+        
+        for (const game of allGames) {
+          const watched = watchedSet.has(game.id);
+          const notes = data.notesByGame?.[game.id] || [];
+          const hasNote = notes.some((n: { isOwn: boolean }) => n.isOwn);
+          statusMap.set(game.id, { watched, hasNote });
+        }
+        
+        setGameStatuses(statusMap);
+      })
+      .catch(err => {
+        console.error('Error fetching game statuses:', err);
+        // Fail gracefully - app still works without statuses
+        setGameStatuses(new Map());
+      });
+  }, [isSignedIn, allGames]);
+
   // Note: Auto-refresh removed since we load all data at once
   // If refresh is needed, reload the page or implement a manual refresh button
 
   return (
     <>
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 overflow-x-hidden">
-      <div className="container mx-auto px-4 md:px-8 lg:px-32 py-4 md:py-6 max-w-7xl">
+    <div className="min-h-screen overflow-x-hidden app-root">
+      <div className="container mx-auto px-4 md:px-8 py-4 md:py-6 max-w-[1800px]">
         <header className="mb-4 md:mb-6">
           {/* Top row: Title and controls */}
-          <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-3 gap-3">
-            <h1 className="text-2xl md:text-4xl font-bold text-gray-900">
+          <div className="planner-header">
+            <h1 className="page-title text-2xl md:text-3xl">
               Prospect Game Planner
             </h1>
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* Show current ranking source */}
-              <span className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-lg">
+            <nav className="planner-nav">
+              {/* Toggle ranking source */}
+              <button
+                onClick={handleToggleRankingSource}
+                className={`planner-tab ${rankingSource === 'myboard' ? 'planner-tab--active' : ''}`}
+                title={`Currently using ${rankingSource === 'espn' ? 'ESPN Rankings' : 'My Board'}. Click to switch.`}
+              >
                 {rankingSource === 'espn' ? 'ESPN Rankings' : 'My Board'}
-              </span>
+              </button>
               {/* Link to Rankings Editor */}
               <Link
                 href="/rankings"
-                className="px-3 py-1.5 text-sm font-medium text-white bg-orange-600 border border-orange-600 rounded-lg hover:bg-orange-700 transition-colors"
+                className="planner-tab"
                 title="Edit your custom rankings"
               >
                 Edit Rankings
@@ -232,14 +362,14 @@ export default function Home() {
                 <>
                   <Link
                     href="/notes"
-                    className="px-3 py-1.5 text-sm font-medium text-purple-600 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors"
+                    className="planner-tab"
                     title="View your notes"
                   >
                     My Notes
                   </Link>
                   <Link
                     href="/profile"
-                    className="px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+                    className="planner-tab"
                   >
                     Profile
                   </Link>
@@ -248,24 +378,43 @@ export default function Home() {
               ) : (
                 <>
                   <SignInButton mode="modal">
-                    <button className="px-3 py-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                      Sign In
-                    </button>
+                    <button className="planner-tab">Sign In</button>
                   </SignInButton>
                   <SignUpButton mode="modal">
-                    <button className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 border border-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
-                      Sign Up
-                    </button>
+                    <button className="planner-tab planner-tab--active">Sign Up</button>
                   </SignUpButton>
                 </>
               )}
-            </div>
+            </nav>
           </div>
           
           {/* Second row: View mode controls */}
           <div className="flex items-center gap-3 flex-1 justify-center max-w-2xl">
             {viewMode === 'day' && (
-              <WeekDatePicker selectedDate={selectedDate} onSelectDate={setSelectedDate} />
+              <>
+                <WeekDatePicker selectedDate={selectedDate} onSelectDate={setSelectedDate} />
+                <SearchBox
+                  allGamesFull={allGames}
+                  onPickTeam={(t) => {
+                    setSelectedProspect(null);
+                    setViewMode('team');
+                    setSelectedTeam(t.label);
+
+                    const params = new URLSearchParams();
+                    params.set('team', t.label);
+                    window.history.replaceState(null, '', `?${params.toString()}`);
+                  }}
+                  onPickProspect={(p) => {
+                    setSelectedTeam(null);
+                    setViewMode('prospect');
+                    setSelectedProspect(p.label);
+
+                    const params = new URLSearchParams();
+                    params.set('prospect', p.label);
+                    window.history.replaceState(null, '', `?${params.toString()}`);
+                  }}
+                />
+              </>
             )}
             {(viewMode === 'team' || viewMode === 'prospect') && (
               <div className="flex items-center gap-2">
@@ -289,27 +438,6 @@ export default function Home() {
                 </button>
               </div>
             )}
-            <SearchBox
-              allGamesFull={allGames}
-              onPickTeam={(t) => {
-                setSelectedProspect(null);
-                setViewMode('team');
-                setSelectedTeam(t.label);
-
-                const params = new URLSearchParams();
-                params.set('team', t.label);
-                window.history.replaceState(null, '', `?${params.toString()}`);
-              }}
-              onPickProspect={(p) => {
-                setSelectedTeam(null);
-                setViewMode('prospect');
-                setSelectedProspect(p.label);
-
-                const params = new URLSearchParams();
-                params.set('prospect', p.label);
-                window.history.replaceState(null, '', `?${params.toString()}`);
-              }}
-            />
           </div>
         </header>
 
@@ -322,14 +450,19 @@ export default function Home() {
           </div>
         )}
 
-        {/* Friend Activity Sidebar */}
-        {isSignedIn && (
-          <div className="mb-6">
-            <FriendActivity />
-          </div>
-        )}
+        {/* 3-Column Layout: Friend Activity | Main Content | Notes Panel */}
+        <div className="prospect-planner-layout planner-layout">
+          {/* Left Sidebar: Friend Activity */}
+          {isSignedIn ? (
+            <div className="min-w-0 planner-panel">
+              <FriendActivity games={allGamesById} />
+            </div>
+          ) : (
+            <div className="min-w-0"></div>
+          )}
 
-        <div className="bg-white rounded-xl shadow-2xl p-3 md:p-4 lg:p-6">
+          {/* Main Content */}
+          <div className="min-w-0 overflow-hidden planner-panel">
           {loading && !Object.keys(games).length ? (
             <LoadingSkeleton message={loadingMessage} />
           ) : (
@@ -341,6 +474,7 @@ export default function Home() {
                   selectedDate={selectedDate} 
                   rankingSource={rankingSource}
                   onOpenNotes={setNotesPanelGame}
+                  gameStatuses={gameStatuses}
                 />
               )}
               {viewMode === 'team' && selectedTeam && (
@@ -352,13 +486,14 @@ export default function Home() {
                     DayTable={DayTable}
                     rankingSource={rankingSource}
                     onOpenNotes={setNotesPanelGame}
+                    gameStatuses={gameStatuses}
                   />
                 </div>
               )}
               {viewMode === 'prospect' && selectedProspect && (
                 <div className="w-full max-w-5xl mx-auto">
                   <section>
-                    <div className="date-header" style={{ border: 'none' }}>
+                    <div className="panel-title date-header" style={{ border: 'none' }}>
                       {selectedProspect} — Matchups ({gamesForProspect.length})
                     </div>
                     {gamesForProspect.length > 0 ? (
@@ -387,6 +522,7 @@ export default function Home() {
                               games={grouped[dk]} 
                               rankingSource={rankingSource}
                               onOpenNotes={setNotesPanelGame}
+                              gameStatuses={gameStatuses}
                             />
                           ));
                       })()
@@ -412,7 +548,27 @@ export default function Home() {
               )}
             </>
           )}
+          </div>
+          {/* End Main Content */}
+
+          {/* Right Sidebar: Notes Panel */}
+          {notesPanelGame ? (
+            <div className="notes-panel-wrapper min-w-0 overflow-hidden planner-panel">
+              <NotesPanel
+                game={notesPanelGame}
+                isOpen={true}
+                onClose={() => setNotesPanelGame(null)}
+                onNoteSaved={() => {
+                  // Optionally refresh data or update UI after note is saved
+                }}
+                sidebarMode={true}
+              />
+            </div>
+          ) : (
+            <div className="min-w-0"></div>
+          )}
         </div>
+        {/* End 3-Column Layout */}
 
         <SearchOverlay
           open={searchOpen}
@@ -439,15 +595,6 @@ export default function Home() {
         dateRange={dateRange} 
       />
     </div>
-
-    <NotesPanel
-      game={notesPanelGame}
-      isOpen={!!notesPanelGame}
-      onClose={() => setNotesPanelGame(null)}
-      onNoteSaved={() => {
-        // Optionally refresh data or update UI after note is saved
-      }}
-    />
     </>
   );
 }

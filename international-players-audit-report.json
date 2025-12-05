@@ -1,0 +1,193 @@
+[
+  {
+    "prospectId": "82433218-6868-4633-b6fd-5a3b80fb75ae",
+    "name": "Paris Lee",
+    "team": "Lyon-Villeurbanne",
+    "teamId": null,
+    "league": "French LNB",
+    "source": "espn",
+    "issues": [
+      "Missing team_id in database",
+      "59 games missing logos",
+      "Team not found in API-Basketball"
+    ],
+    "status": "error",
+    "gameCount": 59,
+    "gamesWithLogos": 0,
+    "gamesWithoutLogos": 59,
+    "inMappings": true,
+    "apiSearchResult": {
+      "found": false
+    }
+  },
+  {
+    "prospectId": "466e50b3-ab9c-4925-b473-aedea5a726db",
+    "name": "Paris Lee",
+    "team": "Lyon-Villeurbanne",
+    "teamId": null,
+    "league": "French LNB",
+    "source": "external",
+    "issues": [
+      "Missing team_id in database",
+      "59 games missing logos",
+      "Team not found in API-Basketball"
+    ],
+    "status": "error",
+    "gameCount": 59,
+    "gamesWithLogos": 0,
+    "gamesWithoutLogos": 59,
+    "inMappings": true,
+    "apiSearchResult": {
+      "found": false
+    }
+  },
+  {
+    "prospectId": "9b8d4494-259c-4a21-9afd-4387ed74a659",
+    "name": "Nando De Colo",
+    "team": "Lyon-Villeurbanne",
+    "teamId": null,
+    "league": "French LNB",
+    "source": "external",
+    "issues": [
+      "Missing team_id in database",
+      "59 games missing logos",
+      "Team not found in API-Basketball"
+    ],
+    "status": "error",
+    "gameCount": 59,
+    "gamesWithLogos": 0,
+    "gamesWithoutLogos": 59,
+    "inMappings": true,
+    "apiSearchResult": {
+      "found": false
+    }
+  },
+  {
+    "prospectId": "fdbbef2b-5ff3-4bb7-8e60-e20146fc5a3c",
+    "name": "Theo Maledon",
+    "team": "Lyon-Villeurbanne",
+    "teamId": null,
+    "league": "French LNB",
+    "source": "external",
+    "issues": [
+      "Missing team_id in database",
+      "59 games missing logos",
+      "Team not found in API-Basketball"
+    ],
+    "status": "error",
+    "gameCount": 59,
+    "gamesWithLogos": 0,
+    "gamesWithoutLogos": 59,
+    "inMappings": true,
+    "apiSearchResult": {
+      "found": false
+    }
+  },
+  {
+    "prospectId": "e8211e7f-e36c-44ea-ad98-4f4da10aeebd",
+    "name": "Aleksej Pokusevski",
+    "team": "Partizan",
+    "teamId": "1068",
+    "league": "Super League",
+    "source": "external",
+    "issues": [
+      "team_id mismatch: DB has 1068, mapping has 1068",
+      "API suggests different team_id: 1068 (Partizan)"
+    ],
+    "status": "error",
+    "gameCount": 46,
+    "gamesWithLogos": 46,
+    "gamesWithoutLogos": 0,
+    "inMappings": true,
+    "apiSearchResult": {
+      "found": true,
+      "suggestedTeamId": 1068,
+      "suggestedTeamName": "Partizan",
+      "country": "Serbia"
+    }
+  },
+  {
+    "prospectId": "f48ba0ee-9618-4428-a6c0-7cc65527e39e",
+    "name": "Dillon Hunter",
+    "team": "Clemson Tigers",
+    "teamId": "228",
+    "league": "NCAA",
+    "source": "external",
+    "issues": [
+      "Team not in TEAM_ID_MAPPINGS",
+      "No games fetched",
+      "Team not found in API-Basketball"
+    ],
+    "status": "error",
+    "gameCount": 0,
+    "gamesWithLogos": 0,
+    "gamesWithoutLogos": 0,
+    "inMappings": false,
+    "apiSearchResult": {
+      "found": false
+    }
+  },
+  {
+    "prospectId": "23b6a2a9-ab93-4e68-807f-30c8ce47baed",
+    "name": "Clarence Nadolny",
+    "team": "Chalon/Saone",
+    "teamId": "20",
+    "league": "French Cup",
+    "source": "external",
+    "issues": [
+      "team_id mismatch: DB has 20, mapping has 20",
+      "Only 4 games (expected 15-50)",
+      "Team not found in API-Basketball"
+    ],
+    "status": "error",
+    "gameCount": 4,
+    "gamesWithLogos": 4,
+    "gamesWithoutLogos": 0,
+    "inMappings": true,
+    "apiSearchResult": {
+      "found": false
+    }
+  },
+  {
+    "prospectId": "731eecc1-5004-4016-9deb-cca2eb339c61",
+    "name": "Thomas Heurtel",
+    "team": "Lyon-Villeurbanne",
+    "teamId": null,
+    "league": "Semaine Des As",
+    "source": "external",
+    "issues": [
+      "Missing team_id in database",
+      "59 games missing logos",
+      "Team not found in API-Basketball"
+    ],
+    "status": "error",
+    "gameCount": 59,
+    "gamesWithLogos": 0,
+    "gamesWithoutLogos": 59,
+    "inMappings": true,
+    "apiSearchResult": {
+      "found": false
+    }
+  },
+  {
+    "prospectId": "dc6e61e1-daab-4887-bba2-5c1b981e541b",
+    "name": "Glynn Watson",
+    "team": "Lyon-Villeurbanne",
+    "teamId": null,
+    "league": "Semaine Des As",
+    "source": "external",
+    "issues": [
+      "Missing team_id in database",
+      "59 games missing logos",
+      "Team not found in API-Basketball"
+    ],
+    "status": "error",
+    "gameCount": 59,
+    "gamesWithLogos": 0,
+    "gamesWithoutLogos": 59,
+    "inMappings": true,
+    "apiSearchResult": {
+      "found": false
+    }
+  }
+]

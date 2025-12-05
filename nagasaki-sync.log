@@ -1,0 +1,42 @@
+﻿[dotenv@17.2.3] injecting env (9) from .env.local -- tip: ΓÜÖ∩╕Å  load multiple .env files with { path: ['.env.local', '.env'] }
+≡ƒÅÇ Syncing Nagasaki Velca schedule...
+
+node.exe : (node:14256) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type 
+of file:///C:/Users/ucric/prospectcal/scripts/sync-nagasaki-now.ts is not 
+specified and it doesn't parse as CommonJS.
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ((node:14256) [M...se as Common 
+   JS.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Reparsing as ES module because module syntax was detected. This incurs a 
+performance overhead.
+To eliminate this warning, add "type": "module" to 
+C:\Users\ucric\prospectcal\package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+Γ£à Found 1 Nagasaki team(s):
+   Nagasaki (B League) [API ID: 6034]
+
+≡ƒôà Fetching schedule for Nagasaki...
+
+   Season: 2025-2026
+   Fetching: https://v1.basketball.api-sports.io/games?team=6034&season=2025-2026&league=56
+   Found 60 games from API
+   Γ£à Stored 60 games
+
+   Season: 2024-2025
+   Fetching: https://v1.basketball.api-sports.io/games?team=6034&season=2024-2025&league=56
+   Found 60 games from API
+   Γ£à Stored 60 games
+
+Γ£à Total games stored for Nagasaki: 120
+
+≡ƒÄë Nagasaki sync complete!
+
+Now check if Hoshikawa is linked to Nagasaki...
+
+Found 1 Hoshikawa prospect(s):
+  K. Hoshikawa (Nagasaki)
+  International Team ID: 221da048-9f88-40b3-b28a-c086d4f5db04

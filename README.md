@@ -149,10 +149,24 @@ This app can be deployed to any platform that supports Next.js:
 - **Netlify**: Connect your repository
 - **Docker**: Use the included Dockerfile (if created)
 
+## Configuration
+
+### Environment Variables
+
+- `USE_ESPN_API_SCHEDULES`: Set to `false` to use txt file-based schedules (legacy mode). Defaults to `true` (ESPN API mode).
+  - ESPN API mode: Fetches schedules directly from ESPN API for each prospect's team
+  - Legacy mode: Reads schedules from `*_schedule.txt` files in the project root
+
+Example `.env.local`:
+```bash
+USE_ESPN_API_SCHEDULES=true
+```
+
 ## Data Sources
 
 - **Prospect Rankings**: ESPN's 2026 NBA Draft Big Board
 - **Game Schedules**: ESPN's hidden API endpoints
+  - Team Schedule: `https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/teams/{teamId}/schedule`
   - Scoreboard: `https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard`
 
 ## License

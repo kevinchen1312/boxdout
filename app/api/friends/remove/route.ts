@@ -1,5 +1,5 @@
 import { auth } from '@clerk/nextjs/server';
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin } from '@/lib/supabase';
 import { NextResponse } from 'next/server';
 
 export async function DELETE(req: Request) {
@@ -18,7 +18,7 @@ export async function DELETE(req: Request) {
     }
 
     // Get user's Supabase ID
-    const { data: userData, error: userError } = await supabase
+    const { data: userData, error: userError } = await supabaseAdmin
       .from('users')
       .select('id')
       .eq('clerk_user_id', userId)
@@ -28,8 +28,8 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Delete friendship (RLS policy ensures user can only delete their own friendships)
-    const { error } = await supabase
+    // Delete friendship (using admin client to bypass RLS since we're doing server-side auth with Clerk)
+    const { error } = await supabaseAdmin
       .from('friends')
       .delete()
       .or(`and(user1_id.eq.${userData.id},user2_id.eq.${friendId}),and(user1_id.eq.${friendId},user2_id.eq.${userData.id})`);
@@ -45,4 +45,5 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+
 

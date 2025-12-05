@@ -9,7 +9,10 @@
     "lint": "eslint",
     "fetch:pros": "tsx scripts/fetch-pro-schedules.ts --debug",
     "fetch:pros:headful": "tsx scripts/fetch-pro-schedules.ts --debug --headful",
-    "fetch:euroleague": "node scripts/fetch-euroleague-times.mjs"
+    "fetch:euroleague": "node scripts/fetch-euroleague-times.mjs",
+    "sync-international": "npx ts-node scripts/daily-international-sync.ts",
+    "verify-leagues": "npx ts-node scripts/verify-multi-league-coverage.ts",
+    "discover-leagues": "npx ts-node scripts/discover-multi-league-teams-fast.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.35.1",
@@ -17,11 +20,14 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@supabase/supabase-js": "^2.81.1",
+    "@types/react-datepicker": "^6.2.0",
     "@types/react-window": "^1.8.8",
     "axios": "^1.13.2",
     "date-fns": "^4.1.0",
+    "dotenv": "^17.2.3",
     "next": "16.0.1",
     "react": "19.2.0",
+    "react-datepicker": "^8.9.0",
     "react-dom": "19.2.0",
     "react-window": "^2.2.3",
     "svix": "^1.81.0"

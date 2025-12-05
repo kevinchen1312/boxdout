@@ -10,6 +10,7 @@ interface NotesPanelProps {
   isOpen: boolean;
   onClose: () => void;
   onNoteSaved?: () => void;
+  sidebarMode?: boolean; // When true, display as sidebar instead of overlay
 }
 
 interface Note {
@@ -35,15 +36,14 @@ interface Group {
   name: string;
 }
 
-export default function NotesPanel({ game, isOpen, onClose, onNoteSaved }: NotesPanelProps) {
+export default function NotesPanel({ game, isOpen, onClose, onNoteSaved, sidebarMode = false }: NotesPanelProps) {
   const [content, setContent] = useState('');
   const [visibility, setVisibility] = useState<'self' | 'friends' | 'group' | 'public'>('self');
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [notes, setNotes] = useState<Note[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
-  const [isLoadingNotes, setIsLoadingNotes] = useState(false);
-  const { isSignedIn, user } = useUser();
+  const { isSignedIn } = useUser();
 
   // Load notes and groups when panel opens
   useEffect(() => {
@@ -56,7 +56,6 @@ export default function NotesPanel({ game, isOpen, onClose, onNoteSaved }: Notes
   const loadNotes = async () => {
     if (!game) return;
     
-    setIsLoadingNotes(true);
     try {
       const response = await fetch(`/api/notes/get?gameId=${game.id}`);
       const data = await response.json();
@@ -66,8 +65,6 @@ export default function NotesPanel({ game, isOpen, onClose, onNoteSaved }: Notes
       }
     } catch (err) {
       console.error('Error loading notes:', err);
-    } finally {
-      setIsLoadingNotes(false);
     }
   };
 
@@ -86,7 +83,8 @@ export default function NotesPanel({ game, isOpen, onClose, onNoteSaved }: Notes
 
   const handleSave = async () => {
     if (!game || !content.trim()) return;
-    
+    if (visibility === 'group' && !selectedGroupId) return;
+
     setIsSaving(true);
     try {
       const response = await fetch('/api/notes/create', {
@@ -94,48 +92,35 @@ export default function NotesPanel({ game, isOpen, onClose, onNoteSaved }: Notes
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           gameId: game.id,
-          content,
+          content: content.trim(),
           visibility,
           groupId: visibility === 'group' ? selectedGroupId : null,
         }),
       });
 
-      const data = await response.json();
-      
       if (response.ok) {
-        await loadNotes();
-        if (onNoteSaved) onNoteSaved();
-        // Clear the input after successful save
         setContent('');
         setVisibility('self');
         setSelectedGroupId(null);
-      } else {
-        console.error('Error saving note:', data);
-        alert(`Failed to save note: ${data.error || 'Unknown error'}.`);
+        await loadNotes();
+        if (onNoteSaved) onNoteSaved();
       }
     } catch (err) {
       console.error('Error saving note:', err);
-      alert('Failed to save note. Please try again.');
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleDelete = async () => {
-    if (!game) return;
-    
-    const ownNote = notes.find(n => n.isOwn);
-    if (!ownNote) return;
+  const handleDeleteNote = async (noteId: string) => {
+    if (!confirm('Are you sure you want to delete this note?')) return;
 
     try {
-      const response = await fetch(`/api/notes/delete?noteId=${ownNote.id}`, {
+      const response = await fetch(`/api/notes/delete?noteId=${noteId}`, {
         method: 'DELETE',
       });
 
       if (response.ok) {
-        setContent('');
-        setVisibility('self');
-        setSelectedGroupId(null);
         await loadNotes();
         if (onNoteSaved) onNoteSaved();
       }
@@ -146,9 +131,6 @@ export default function NotesPanel({ game, isOpen, onClose, onNoteSaved }: Notes
 
   const handleClose = () => {
     setContent('');
-    setVisibility('self');
-    setSelectedGroupId(null);
-    setNotes([]);
     onClose();
   };
 
@@ -157,9 +139,190 @@ export default function NotesPanel({ game, isOpen, onClose, onNoteSaved }: Notes
   const awayTeam = game.awayTeam.displayName || game.awayTeam.name;
   const homeTeam = game.homeTeam.displayName || game.homeTeam.name;
   const gameDate = game.date ? format(parseISO(game.date), 'EEEE, MMM d, yyyy') : '';
-  const ownNote = notes.find(n => n.isOwn);
   const otherNotes = notes.filter(n => !n.isOwn);
 
+  // Panel content
+  const panelContent = (
+    <>
+      {/* Header */}
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex-1">
+          <h2 className="panel-title text-xl font-semibold mb-2">Game Notes</h2>
+          <div className="meta-text text-sm">
+            <div className="font-medium" style={{ color: 'var(--text-primary)' }}>{awayTeam} at {homeTeam}</div>
+            <div>{gameDate}</div>
+          </div>
+        </div>
+        <button
+          onClick={handleClose}
+          className="icon-button"
+          aria-label="Close panel"
+          style={{ color: 'var(--text-meta)' }}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      {!isSignedIn ? (
+        <div className="text-center py-8">
+          <p className="mb-4" style={{ color: 'var(--text-secondary)' }}>Sign in to add notes to this game.</p>
+        </div>
+      ) : (
+        <>
+          {/* Display Your Saved Notes */}
+          {notes.filter(n => n.isOwn).length > 0 && (
+            <div className="mb-6 space-y-3">
+              <h3 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Your Notes</h3>
+              {notes.filter(n => n.isOwn).map((note) => (
+                <div key={note.id} className="note-row">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="meta-text text-xs">
+                      {format(parseISO(note.updated_at), 'MMM d, yyyy h:mm a')}
+                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className="note-row-icon meta-text text-xs">
+                        {note.visibility === 'self' ? '🔒 Only Me' : 
+                         note.visibility === 'friends' ? '👥 Friends' :
+                         note.visibility === 'group' ? `👥 ${note.group?.name || 'Group'}` :
+                         '🌐 Public'}
+                      </span>
+                      <button
+                        onClick={() => handleDeleteNote(note.id)}
+                        className="delete-button"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                  <p className="note-text whitespace-pre-wrap">{note.content}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Note Editor Form Section */}
+          <div className="notes-form-section">
+            <div>
+              <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-primary)' }}>
+                Add New Note
+              </label>
+              <textarea
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                placeholder="Write your thoughts about this game..."
+                className="app-textarea w-full px-3 py-2 resize-none"
+                rows={6}
+              />
+            </div>
+
+            {/* Visibility Controls */}
+            <div>
+              <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-primary)' }}>
+                Visibility
+              </label>
+              <select
+                value={visibility}
+                onChange={(e) => setVisibility(e.target.value as 'self' | 'friends' | 'group' | 'public')}
+                className="app-select w-full px-3 py-2"
+              >
+                <option value="self">Only Me</option>
+                <option value="friends">Friends</option>
+                <option value="group">Groups</option>
+                <option value="public">Public</option>
+              </select>
+            </div>
+
+            {/* Group Selector */}
+            {visibility === 'group' && (
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-primary)' }}>
+                  Select Group
+                </label>
+                <select
+                  value={selectedGroupId || ''}
+                  onChange={(e) => setSelectedGroupId(e.target.value || null)}
+                  className="app-select w-full px-3 py-2"
+                >
+                  <option value="">Select a group...</option>
+                  {groups.map(group => (
+                    <option key={group.id} value={group.id}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
+                {groups.length === 0 && (
+                  <p className="meta-text text-sm mt-1">
+                    No groups yet. Create one in your profile.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Action Buttons Footer */}
+          <div className="notes-footer">
+            <button
+              onClick={handleSave}
+              disabled={isSaving || !content.trim() || (visibility === 'group' && !selectedGroupId)}
+              className="app-button-primary px-4 py-2 font-medium"
+            >
+              {isSaving ? 'Saving...' : 'Save Note'}
+            </button>
+            <button
+              onClick={handleClose}
+              className="app-button px-4 py-2 font-medium"
+            >
+              Close
+            </button>
+          </div>
+
+          {/* Other Users' Notes */}
+          {otherNotes.length > 0 && (
+            <div>
+              <h3 className="panel-title text-base font-semibold mb-3">
+                Shared Notes
+              </h3>
+              <div className="space-y-3">
+                {otherNotes.map(note => (
+                  <div key={note.id} className="note-row">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                        {note.user.username || note.user.email}
+                      </span>
+                      <span className="meta-text text-xs capitalize">
+                        {note.visibility === 'group' && note.group ? note.group.name : note.visibility}
+                      </span>
+                    </div>
+                    <p className="note-text whitespace-pre-wrap">
+                      {note.content}
+                    </p>
+                    <div className="meta-text text-xs mt-2">
+                      {format(parseISO(note.created_at), 'MMM d, yyyy h:mm a')}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </>
+  );
+
+  // Sidebar mode: Static panel
+  if (sidebarMode) {
+    return (
+      <div className="game-notes-panel h-full overflow-y-auto">
+        <div className="card-inner">
+          {panelContent}
+        </div>
+      </div>
+    );
+  }
+
+  // Overlay mode: Fixed position with backdrop
   return (
     <div 
       style={{
@@ -188,195 +351,21 @@ export default function NotesPanel({ game, isOpen, onClose, onNoteSaved }: Notes
       
       {/* Slide-out Panel */}
       <div 
+        className="game-notes-panel"
         style={{
           position: 'absolute',
           top: 0,
           right: 0,
           bottom: 0,
           width: '500px',
-          backgroundColor: 'white',
-          boxShadow: '-2px 0 8px rgba(0, 0, 0, 0.1)',
           zIndex: 2,
           overflowY: 'auto',
-          padding: '24px 32px',
         }}
       >
-          {/* Header */}
-          <div className="flex items-start justify-between mb-4">
-            <div className="flex-1">
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Game Notes</h2>
-              <div className="text-sm text-gray-600">
-                <div className="font-semibold">{awayTeam} at {homeTeam}</div>
-                <div>{gameDate}</div>
-              </div>
-            </div>
-            <button
-              onClick={handleClose}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
-              aria-label="Close panel"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-
-          {!isSignedIn ? (
-            <div className="text-center py-8">
-              <p className="text-gray-600 mb-4">Sign in to add notes to this game.</p>
-            </div>
-          ) : (
-            <>
-              {/* Display Saved Note */}
-              {ownNote && !content && (
-                <div 
-                  className="mb-6 rounded-lg p-4 border"
-                  style={{ 
-                    backgroundColor: '#eff6ff', 
-                    borderColor: '#bfdbfe' 
-                  }}
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-sm font-medium text-gray-700">
-                      {format(parseISO(ownNote.updated_at), 'MMM d, yyyy h:mm a')}
-                    </span>
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs text-gray-600">
-                        {ownNote.visibility === 'self' ? '🔒 Only Me' : 
-                         ownNote.visibility === 'friends' ? '👥 Friends' :
-                         ownNote.visibility === 'group' ? `👥 ${ownNote.group?.name || 'Group'}` :
-                         '🌐 Public'}
-                      </span>
-                      <button
-                        onClick={() => {
-                          setContent(ownNote.content);
-                          setVisibility(ownNote.visibility);
-                          if (ownNote.group) setSelectedGroupId(ownNote.group.id);
-                        }}
-                        className="text-xs text-blue-600 hover:text-blue-800 font-medium"
-                      >
-                        Edit
-                      </button>
-                    </div>
-                  </div>
-                  <p className="text-gray-800 whitespace-pre-wrap">{ownNote.content}</p>
-                </div>
-              )}
-
-              {/* Note Editor */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  {ownNote ? 'Edit Your Note' : 'Write a Note'}
-                </label>
-                <textarea
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  placeholder="Write your thoughts about this game..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                  rows={6}
-                />
-              </div>
-
-              {/* Visibility Controls */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Visibility
-                </label>
-                <select
-                  value={visibility}
-                  onChange={(e) => setVisibility(e.target.value as any)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="self">Only Me</option>
-                  <option value="friends">Friends</option>
-                  <option value="group">Groups</option>
-                  <option value="public">Public</option>
-                </select>
-              </div>
-
-              {/* Group Selector (if visibility is 'group') */}
-              {visibility === 'group' && (
-                <div className="mb-6">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Select Group
-                  </label>
-                  <select
-                    value={selectedGroupId || ''}
-                    onChange={(e) => setSelectedGroupId(e.target.value || null)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="">Select a group...</option>
-                    {groups.map(group => (
-                      <option key={group.id} value={group.id}>
-                        {group.name}
-                      </option>
-                    ))}
-                  </select>
-                  {groups.length === 0 && (
-                    <p className="text-sm text-gray-500 mt-1">
-                      No groups yet. Create one in your profile.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className="flex gap-3 mb-8">
-                <button
-                  onClick={handleSave}
-                  disabled={isSaving || !content.trim() || (visibility === 'group' && !selectedGroupId)}
-                  className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors font-medium"
-                >
-                  {isSaving ? 'Saving...' : ownNote ? 'Update Note' : 'Save Note'}
-                </button>
-                {ownNote && (
-                  <button
-                    onClick={handleDelete}
-                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
-                  >
-                    Delete
-                  </button>
-                )}
-                <button
-                  onClick={handleClose}
-                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors font-medium"
-                >
-                  Cancel
-                </button>
-              </div>
-
-              {/* Other Users' Notes */}
-              {otherNotes.length > 0 && (
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-3">
-                    Shared Notes
-                  </h3>
-                  <div className="space-y-4">
-                    {otherNotes.map(note => (
-                      <div key={note.id} className="bg-gray-50 rounded-lg p-4">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium text-gray-900">
-                            {note.user.username || note.user.email}
-                          </span>
-                          <span className="text-xs text-gray-500 capitalize">
-                            {note.visibility === 'group' && note.group ? note.group.name : note.visibility}
-                          </span>
-                        </div>
-                        <p className="text-sm text-gray-700 whitespace-pre-wrap">
-                          {note.content}
-                        </p>
-                        <div className="text-xs text-gray-400 mt-2">
-                          {format(parseISO(note.created_at), 'MMM d, yyyy h:mm a')}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
-          )}
+        <div className="card-inner">
+          {panelContent}
+        </div>
       </div>
     </div>
   );
 }
-

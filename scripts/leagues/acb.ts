@@ -156,3 +156,8 @@ export async function scrape(page: Page, teamLabel: string): Promise<Row[]> {
   });
 }
 
+
+
+
+
+

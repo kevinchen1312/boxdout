@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { format, parseISO } from 'date-fns';
 import { getGamesForDate } from '@/lib/loadSchedules';
 import type { RankingSource } from '@/lib/loadProspects';
+import { auth } from '@clerk/nextjs/server';
 
 export async function GET(request: NextRequest) {
   try {
@@ -30,7 +31,11 @@ export async function GET(request: NextRequest) {
     }
     const dateKey = format(parsedDate, 'yyyy-MM-dd');
     
-    const games = await getGamesForDate(dateKey, source);
+    // Get userId if available (needed for custom players in 'myboard' and watchlist players in both)
+    const { userId } = await auth();
+    const clerkUserId = userId || undefined;
+    
+    const games = await getGamesForDate(dateKey, source, clerkUserId);
 
     return NextResponse.json({ games, date: dateKey, source });
   } catch (error) {

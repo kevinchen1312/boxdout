@@ -249,3 +249,8 @@ console.log(`   These use authentic team colors and professional designs.`);
 console.log(`\n💡 Tip: You can replace these with official logos later if needed.`);
 console.log(`\n`);
 
+
+
+
+
+
