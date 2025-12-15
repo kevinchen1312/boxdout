@@ -30,3 +30,4 @@ export function scoreTeam(qRaw: string, label: string, canon: string) {
 
 
 
+

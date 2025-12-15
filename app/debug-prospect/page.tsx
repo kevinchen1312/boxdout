@@ -66,14 +66,14 @@ export default function DebugProspectPage() {
         </div>
       )}
 
-      {data && (
+      {data && !data.databaseStats && (
         <div className="space-y-6">
           <div className="bg-gray-100 p-4 rounded">
             <h2 className="font-bold text-lg mb-2">Summary</h2>
-            <p>Found {data.prospectsFound} prospect(s) matching "{data.playerName}"</p>
+            <p>Found {data.prospectsFound || 0} prospect(s) matching "{data.playerName}"</p>
           </div>
 
-          {data.prospects.map((prospect: any, idx: number) => (
+          {data.prospects && data.prospects.length > 0 && data.prospects.map((prospect: any, idx: number) => (
             <div key={idx} className="border p-4 rounded">
               <h3 className="font-bold text-lg mb-2">{prospect.fullName}</h3>
               
@@ -129,6 +129,11 @@ export default function DebugProspectPage() {
               </div>
             </div>
           ))}
+          {(!data.prospects || data.prospects.length === 0) && (
+            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded">
+              <p>No prospects found matching "{data.playerName}"</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -147,6 +152,164 @@ export default function DebugProspectPage() {
           So yes, it triggers an API fetch, not just using existing database data.
         </p>
       </div>
+
+      <div className="mt-4">
+        <button
+          onClick={async () => {
+            setLoading(true);
+            setError(null);
+            try {
+              const response = await fetch(`/api/debug/prospect?checkDatabase=true`);
+              if (!response.ok) throw new Error('Failed to fetch database stats');
+              const result = await response.json();
+              setData({ databaseStats: result });
+            } catch (err: any) {
+              setError(err.message);
+            } finally {
+              setLoading(false);
+            }
+          }}
+          disabled={loading}
+          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 disabled:opacity-50"
+        >
+          {loading ? 'Loading...' : 'Check Database Stats'}
+        </button>
+      </div>
+
+      {data?.databaseStats && (
+        <div className="mt-4 p-4 bg-gray-100 rounded">
+          <h2 className="font-bold text-lg mb-2">International Team Schedules Database</h2>
+          <div className="space-y-2">
+            <div><strong>Total Games:</strong> {data.databaseStats.totalGames}</div>
+            <div><strong>Unique Teams in Games:</strong> {data.databaseStats.uniqueTeamsInGames || data.databaseStats.uniqueTeams || 0}</div>
+            <div><strong>Teams in Database (synced):</strong> {data.databaseStats.teamsInDatabase || 0}</div>
+            <div><strong>Teams with Rosters:</strong> {data.databaseStats.teamsWithRosters || 0}</div>
+            <div><strong>Teams with Schedules:</strong> {data.databaseStats.teamsWithSchedules || 0}</div>
+            <div><strong>Teams with Both Rosters & Schedules:</strong> {data.databaseStats.teamsWithBoth || 0}</div>
+            <div><strong>Teams with Prospects Linked:</strong> {data.databaseStats.teamsWithProspectsLinked || 0}</div>
+            <div><strong>Unique Team Names:</strong> {data.databaseStats.uniqueTeamNames || 0}</div>
+            {data.databaseStats.dateRange.earliest && (
+              <div>
+                <strong>Date Range:</strong> {data.databaseStats.dateRange.earliest} to {data.databaseStats.dateRange.latest}
+              </div>
+            )}
+            {data.databaseStats.allTeams && data.databaseStats.allTeams.length > 0 && (
+              <div className="mt-4">
+                <strong>All Teams with Schedules ({data.databaseStats.allTeams.length} teams):</strong>
+                <div className="mt-2 max-h-96 overflow-y-auto border p-2 rounded">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left p-2">Team ID</th>
+                        <th className="text-left p-2">Team Names</th>
+                        <th className="text-right p-2">Games</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.databaseStats.allTeams.map((team: any, idx: number) => (
+                        <tr key={idx} className="border-b hover:bg-gray-50">
+                          <td className="p-2 font-mono text-xs">{team.teamId}</td>
+                          <td className="p-2">
+                            {team.names.length > 0 ? team.names.join(', ') : 'No name'}
+                            {team.names.length > 1 && (
+                              <span className="text-orange-600 ml-2">({team.names.length} variations)</span>
+                            )}
+                          </td>
+                          <td className="p-2 text-right">{team.gameCount}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            {data.databaseStats.allTeamsWithStatus && data.databaseStats.allTeamsWithStatus.length > 0 && (
+              <div className="mt-4">
+                <strong>All Teams ({data.databaseStats.allTeamsWithStatus.length} teams):</strong>
+                <div className="mt-2 max-h-96 overflow-y-auto border p-2 rounded">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left p-2">Team Name</th>
+                        <th className="text-left p-2">League</th>
+                        <th className="text-center p-2">Roster</th>
+                        <th className="text-center p-2">Schedule</th>
+                        <th className="text-center p-2">Prospects</th>
+                        <th className="text-right p-2">API ID</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.databaseStats.allTeamsWithStatus.map((item: any, idx: number) => (
+                        <tr key={idx} className="border-b hover:bg-gray-50">
+                          <td className="p-2">{item.team.name || item.team.display_name}</td>
+                          <td className="p-2">{item.team.league_name || 'N/A'}</td>
+                          <td className="p-2 text-center">
+                            {item.hasRoster ? (
+                              <span className="text-green-600">✓ ({item.rosterCount})</span>
+                            ) : (
+                              <span className="text-gray-400">✗</span>
+                            )}
+                          </td>
+                          <td className="p-2 text-center">
+                            {item.hasSchedule ? (
+                              <span className="text-green-600">✓ ({item.scheduleCount})</span>
+                            ) : (
+                              <span className="text-gray-400">✗</span>
+                            )}
+                          </td>
+                          <td className="p-2 text-center">
+                            {item.hasProspects ? (
+                              <span className="text-blue-600">✓ ({item.prospectCount})</span>
+                            ) : (
+                              <span className="text-gray-400">✗</span>
+                            )}
+                          </td>
+                          <td className="p-2 text-right font-mono text-xs">{item.team.api_team_id}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            {data.databaseStats.sampleTeamsWithProspects && data.databaseStats.sampleTeamsWithProspects.length > 0 && (
+              <div className="mt-4">
+                <strong>Sample Teams with Prospects ({data.databaseStats.sampleTeamsWithProspects.length} teams):</strong>
+                <div className="mt-2 max-h-64 overflow-y-auto border p-2 rounded">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left p-2">Team Name</th>
+                        <th className="text-left p-2">League</th>
+                        <th className="text-right p-2">Prospects</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.databaseStats.sampleTeamsWithProspects.map((item: any, idx: number) => (
+                        <tr key={idx} className="border-b hover:bg-gray-50">
+                          <td className="p-2">{item.team.name || item.team.display_name}</td>
+                          <td className="p-2">{item.team.league_name || 'N/A'}</td>
+                          <td className="p-2 text-right">{item.prospectCount}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            {data.databaseStats.leagueCounts && Object.keys(data.databaseStats.leagueCounts).length > 0 && (
+              <div>
+                <strong>Games by League:</strong>
+                <ul className="list-disc ml-6 mt-1">
+                  {Object.entries(data.databaseStats.leagueCounts).map(([league, count]) => (
+                    <li key={league}>{league}: {count} games</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

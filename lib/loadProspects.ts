@@ -5,6 +5,135 @@ import { supabaseAdmin, getSupabaseUserId } from './supabase';
 
 export type RankingSource = 'espn' | 'myboard';
 
+// Cache for team name → ESPN team ID mapping
+let teamNameToIdCache: Map<string, string> | null = null;
+let teamNameToIdCacheTimestamp: number | null = null;
+const TEAM_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+/**
+ * Normalizes team name for lookup (lowercase, no special chars)
+ */
+function normalizeTeamNameForLookup(name: string): string {
+  return (name || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Builds a team name → ESPN team ID mapping from the database
+ * Uses ncaa_team_schedules to get accurate team IDs
+ */
+async function buildTeamNameToIdMap(): Promise<Map<string, string>> {
+  // Return cached map if still valid
+  if (teamNameToIdCache && teamNameToIdCacheTimestamp && 
+      Date.now() - teamNameToIdCacheTimestamp < TEAM_CACHE_TTL) {
+    return teamNameToIdCache;
+  }
+  
+  console.log('[loadProspects] Building team name → ID mapping from database...');
+  const map = new Map<string, string>();
+  
+  try {
+    // Query unique team names and IDs from ncaa_team_schedules
+    const { data: homeTeams, error: homeError } = await supabaseAdmin
+      .from('ncaa_team_schedules')
+      .select('home_team_id, home_team_name, home_team_display_name')
+      .limit(5000);
+    
+    if (homeError) {
+      console.error('[loadProspects] Error fetching home teams:', homeError);
+    } else if (homeTeams) {
+      for (const team of homeTeams) {
+        const id = String(team.home_team_id);
+        // Map both short name and display name
+        if (team.home_team_name) {
+          const key = normalizeTeamNameForLookup(team.home_team_name);
+          if (!map.has(key)) map.set(key, id);
+        }
+        if (team.home_team_display_name) {
+          const key = normalizeTeamNameForLookup(team.home_team_display_name);
+          if (!map.has(key)) map.set(key, id);
+        }
+      }
+    }
+    
+    const { data: awayTeams, error: awayError } = await supabaseAdmin
+      .from('ncaa_team_schedules')
+      .select('away_team_id, away_team_name, away_team_display_name')
+      .limit(5000);
+    
+    if (awayError) {
+      console.error('[loadProspects] Error fetching away teams:', awayError);
+    } else if (awayTeams) {
+      for (const team of awayTeams) {
+        const id = String(team.away_team_id);
+        if (team.away_team_name) {
+          const key = normalizeTeamNameForLookup(team.away_team_name);
+          if (!map.has(key)) map.set(key, id);
+        }
+        if (team.away_team_display_name) {
+          const key = normalizeTeamNameForLookup(team.away_team_display_name);
+          if (!map.has(key)) map.set(key, id);
+        }
+      }
+    }
+    
+    console.log(`[loadProspects] Built team map with ${map.size} entries`);
+    
+    // Log some examples for debugging
+    const texasId = map.get('texas');
+    const texasTechId = map.get('texastech');
+    const texasAmId = map.get('texasam');
+    console.log(`[loadProspects] Team ID examples: Texas=${texasId}, Texas Tech=${texasTechId}, Texas A&M=${texasAmId}`);
+    
+    // Log Alabama examples for debugging
+    const alabamaId = map.get('alabama');
+    const alabamaStateId = map.get('alabamastate');
+    console.log(`[loadProspects] Alabama team IDs: Alabama=${alabamaId}, Alabama State=${alabamaStateId}`);
+    
+    teamNameToIdCache = map;
+    teamNameToIdCacheTimestamp = Date.now();
+    return map;
+  } catch (error) {
+    console.error('[loadProspects] Error building team map:', error);
+    return new Map();
+  }
+}
+
+/**
+ * Looks up ESPN team ID for a team name
+ */
+export async function getTeamIdForName(teamName: string): Promise<string | undefined> {
+  const map = await buildTeamNameToIdMap();
+  const key = normalizeTeamNameForLookup(teamName);
+  return map.get(key);
+}
+
+/**
+ * Separates prospects into big board and watchlist
+ * This is needed because loadProspects returns a combined array
+ */
+export async function getBigBoardAndWatchlistProspects(
+  source: RankingSource,
+  clerkUserId?: string
+): Promise<{ bigBoard: Prospect[]; watchlist: Prospect[] }> {
+  const allProspects = await loadProspects(source, clerkUserId);
+  
+  const bigBoard: Prospect[] = [];
+  const watchlist: Prospect[] = [];
+  
+  for (const prospect of allProspects) {
+    if (prospect.isWatchlist) {
+      watchlist.push(prospect);
+    } else {
+      bigBoard.push(prospect);
+    }
+  }
+  
+  return { bigBoard, watchlist };
+}
+
 let cachedProspectsESPN: Prospect[] | null = null;
 let cachedProspectsMyBoard: Prospect[] | null = null;
 
@@ -44,14 +173,34 @@ export const loadCustomPlayers = async (clerkUserId: string): Promise<Prospect[]
       return [];
     }
 
-    const { data, error } = await supabaseAdmin
+    // Add timeout to prevent hanging
+    const queryPromise = supabaseAdmin
       .from('custom_players')
       .select('*')
       .eq('user_id', supabaseUserId)
       .order('rank', { ascending: true });
+    
+    const timeoutPromise = new Promise<{ data: null, error: { code: string, message: string } }>((resolve) => {
+      setTimeout(() => {
+        resolve({ data: null, error: { code: 'TIMEOUT', message: 'Query timeout' } });
+      }, 5000); // 5 second timeout
+    });
+    
+    const { data, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
 
-    if (error || !data) {
+    if (error) {
+      // If table doesn't exist (PGRST205) or schema cache issue, return empty array
+      if (error.code === '42P01' || error.code === 'PGRST205' || error.code === 'TIMEOUT' || error.message?.includes('does not exist') || error.message?.includes('schema cache')) {
+        if (error.code === 'TIMEOUT') {
+          console.warn('[loadCustomPlayers] Query timeout, returning empty array');
+        }
+        return [];
+      }
       console.error('Error loading custom players:', error);
+      return [];
+    }
+
+    if (!data) {
       return [];
     }
 
@@ -78,18 +227,15 @@ export const loadWatchlistPlayers = async (clerkUserId: string): Promise<Prospec
   try {
     const supabaseUserId = await getSupabaseUserId(clerkUserId);
     if (!supabaseUserId) {
-      console.log('[loadWatchlistPlayers] No supabase user ID found');
       return [];
     }
 
-    console.log('[loadWatchlistPlayers] Loading watchlist for user:', supabaseUserId);
-
-    // Load watchlist players (imported prospects with source: 'external' or 'espn')
-    const { data, error } = await supabaseAdmin
+    // Add timeout to prevent hanging
+    const queryPromise = supabaseAdmin
       .from('user_rankings')
       .select(`
         rank,
-        prospects (
+        prospects!inner (
           id,
           full_name,
           position,
@@ -101,22 +247,35 @@ export const loadWatchlistPlayers = async (clerkUserId: string): Promise<Prospec
       `)
       .eq('user_id', supabaseUserId)
       .order('rank', { ascending: true });
+    
+    const timeoutPromise = new Promise<{ data: null, error: { code: string, message: string } }>((resolve) => {
+      setTimeout(() => {
+        resolve({ data: null, error: { code: 'TIMEOUT', message: 'Query timeout' } });
+      }, 5000); // 5 second timeout
+    });
+    
+    const { data, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
 
     if (error) {
-      console.error('[loadWatchlistPlayers] Error loading watchlist players:', error);
+      if (error.code === 'TIMEOUT') {
+        console.warn('[loadWatchlistPlayers] Query timeout, returning empty array');
+      } else {
+        console.error('[loadWatchlistPlayers] Error loading watchlist players:', error);
+      }
       return [];
     }
 
-    if (!data) {
-      console.log('[loadWatchlistPlayers] No data returned');
+    if (!data || data.length === 0) {
       return [];
     }
 
-    console.log('[loadWatchlistPlayers] Loaded', data.length, 'rankings');
-
-    // Filter in JavaScript instead of using .or() on nested field
-    const filtered = data.filter((r: any) => r.prospects && (r.prospects.source === 'external' || r.prospects.source === 'espn' || r.prospects.source === 'international-roster'));
-    console.log('[loadWatchlistPlayers] Filtered to', filtered.length, 'watchlist players');
+    // Filter in JavaScript (Supabase doesn't support .in() on nested fields)
+    const filtered = data.filter((r: any) => 
+      r.prospects && 
+      (r.prospects.source === 'external' || 
+       r.prospects.source === 'espn' || 
+       r.prospects.source === 'international-roster')
+    );
 
     return filtered.map((r: any) => ({
         rank: r.rank,
@@ -164,6 +323,9 @@ export const loadProspects = async (
     }
   }
 
+  // Build team name → ID mapping for accurate team matching
+  const teamNameToId = await buildTeamNameToIdMap();
+
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -180,12 +342,22 @@ export const loadProspects = async (
     const position = match[3].trim();
     const teamRaw = match[4].trim();
     const team = normalizeTeam(teamRaw);
+    
+    // Look up team ID from database - this prevents "Texas" matching "Texas Tech"
+    const teamKey = normalizeTeamNameForLookup(team);
+    const teamId = teamNameToId.get(teamKey);
+    
+    // Debug logging for problematic prospects
+    if (name.includes('Philon') || team.toLowerCase().includes('alabama') || team.toLowerCase().includes('texas')) {
+      console.log(`[loadProspects] DEBUG: ${name} - team="${team}" teamKey="${teamKey}" teamId=${teamId || 'UNDEFINED'}`);
+    }
 
     const prospect: Prospect = {
       rank,
       name,
       position,
       team,
+      teamId, // Add team ID for accurate matching
       class: classifyProspect(team),
       espnRank: source === 'espn' ? rank : (espnNameToRank.get(name) || rank),
       source: source as 'espn' | 'external', // Set source based on which file we're loading from

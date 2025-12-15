@@ -20,3 +20,4 @@ COMMENT ON COLUMN prospect_games.away_team_logo IS 'Cached logo URL for away tea
 
 
 
+

@@ -1,100 +1,101 @@
-01. Darryn Peterson - PG/SG, Kansas
-02. Aleksej Pokusevski - Forward, Partizan
+01. Cameron Boozer - PF/C, Duke
+02. Darryn Peterson - PG/SG, Kansas
 03. AJ Dybantsa - SF, BYU
-04. Dash Daniels - PG/SG, Melbourne United
-05. Jayden Quaintance - C, Kentucky
-06. Nate Ament - SF/PF, Tennessee
-07. Braylon Mullins - SG, UConn
-08. Caleb Wilson - PF/C, North Carolina
-09. Mikel Brown Jr. - PG, Louisville
-10. Chris Cenac Jr. - PF/C, Houston
-11. Koa Peat - PF/C, Arizona
-12. Dame Sarr - SG/SF, Duke
-13. Karim Lopez - SF/PF, New Zealand Breakers
-14. Tounde Yessoufou - SG/SF, Baylor
-15. Thomas Haugh - SF/PF, Florida
-16. Yaxel Lendeborg - PF/C, Michigan
+04. Kingston Flemings - PG, Houston
+05. Labaron Philon Jr. - PG, Alabama
+06. Caleb Wilson - PF/C, North Carolina
+07. Christian Anderson - PG, Texas Tech
+08. Jayden Quaintance - C, Kentucky
+09. Meleek Thomas - PG/SG, Arkansas
+10. Hannes Steinbach - PF/C, Washington
+11. Thomas Haugh - SF/PF, Florida
+12. Yaxel Lendeborg - PF/C, Michigan
+13. Tounde Yessoufou - SG/SF, Baylor
+14. Karim Lopez - SF/PF, New Zealand Breakers
+15. Koa Peat - PF/C, Arizona
+16. Neoklis Avdalas - SG/SF, Virginia Tech
 17. Darius Acuff Jr. - PG, Arkansas
-18. Hannes Steinbach - PF/C, Washington
-19. Labaron Philon Jr. - PG, Alabama
-20. Bennett Stirtz - PG, Iowa
-21. Isaiah Evans - SG, Duke
-22. Zuby Ejiofor - C, St. John's
-23. Joseph Tugler - PF/C, Houston
-24. Miles Byrd - SG/SF, San Diego State
-25. Tahaad Pettiford - PG, Auburn
-26. Meleek Thomas - PG/SG, Arkansas
-27. Patrick Ngongba II - C, Duke
-28. Neoklis Avdalas - SG/SF, Virginia Tech
-29. Alex Condon - C, Florida
-30. Aday Mara - C, Michigan
-31. Sergio de Larrea - PG/SG, Valencia (Spain)
-32. Dwayne Aristode - SF, Arizona
-33. Braden Smith - PG, Purdue
-34. Nikolas Khamenia - SF/PF, Duke
-35. JT Toppin - PF/C, Texas Tech
-36. Tomislav Ivisic - C, Illinois
-37. Kingston Flemings - PG, Houston
-38. Karter Knox - SG/SF, Arkansas
-39. Darrion Williams - SF, NC State
-40. Alex Karaban - SF/PF, UConn
-41. Brayden Burries - SG, Arizona
-42. Wesley Yates - SG, Washington
+18. Braylon Mullins - SG, UConn
+19. Isaiah Evans - SG, Duke
+20. Patrick Ngongba II - C, Duke
+21. Mikel Brown Jr. - PG, Louisville
+22. Braden Smith - PG, Purdue
+23. Chris Cenac Jr. - PF/C, Houston
+24. Cameron Carr - SG/SF, Baylor
+25. Alex Condon - C, Florida
+26. Bennett Stirtz - PG, Iowa
+27. Nate Ament - SF/PF, Tennessee
+28. Karter Knox - SG/SF, Arkansas
+29. Alex Karaban - SF/PF, UConn
+30. Joshua Jefferson - PF/C, Iowa State
+31. Nikolas Khamenia - SF/PF, Duke
+32. Dame Sarr - SG/SF, Duke
+33. Morez Johnson Jr. - PF/C, Michigan
+34. Richie Saunders - SG/SF, BYU
+35. Henri Veesaar - C, North Carolina
+36. Flory Bidunga - C, Kansas
+37. Aday Mara - C, Michigan
+38. Killyan Toure - G, Iowa State Cyclones
+39. Milan Momcilovic - PF, Iowa State
+40. Emanuel Sharp - SG, Houston
+41. Eric Reibe - PF/C, UConn
+42. JT Toppin - PF/C, Texas Tech
 43. Mouhamed Sylla - C, Georgia Tech
-44. Matthew Able - SF, NC State
-45. Isiah Harwell - SF, Houston
-46. Henri Veesaar - C, North Carolina
-47. Magoon Gwath - C, San Diego State
-48. Cameron Carr - SG/SF, Baylor
-49. Motiejus Krivas - C, Arizona
-50. Ognjen Srzentic - SG/SF, Mega Superbet (Serbia)
-51. Dailyn Swain - SG/SF, Texas
-52. Ivan Kharchenkov - SF, Arizona
-53. Eric Reibe - PF/C, UConn
-54. Boogie Fland - PG, Florida
-55. Milos Uzan - PG, Houston
-56. Paul McNeil Jr. - SG, NC State
-57. Adam Atamna - SG, ASVEL (France)
-58. Moustapha Thiam - C, Cincinnati
-59. Solo Ball - SG, UConn
-60. Morez Johnson Jr. - PF/C, Michigan
-61. Michael Ruzic - PF/C, Joventut (Spain)
-62. Ian Jackson - SG, St. John's
-63. Mackenzie Mgbako - SF, Texas A&M
-64. Flory Bidunga - C, Kansas
-65. Johann Grunloh - PF/C, Virginia
-66. Christian Anderson - PG, Texas Tech
-67. Jackson McAndrew - PF, Creighton
-68. Andrej Stojakovic - SG/SF, Illinois
-69. Nolan Winter - PF/C, Wisconsin
-70. Richie Saunders - SG/SF, BYU
-71. Tucker DeVries - SG/SF, Indiana
-72. Luigi Suigo - C, Mega Superbet (Serbia)
-73. Kanon Catchings - SF, Georgia
-74. Kwame Evans Jr. - PF, Oregon
-75. Kylan Boswell - PG/SG, Illinois
-76. Otega Oweh - SG/SF, Kentucky
-77. Tobi Lawal - PF, Virginia Tech
-78. Josh Dix - SG/SF, Creighton
-79. Mouhamed Faye - PF/C, Paris Basket (France)
-80. John Blackwell - SG/SF, Wisconsin
-81. Tyrone Riley IV - SG/SF, San Francisco
-82. Alvaro Folgueiras - PF, Iowa
-83. Baba Miller - PF/C, Cincinnati
-84. Jaland Lowe - PG, Kentucky
-85. Joshua Jefferson - PF/C, Iowa State
-86. Xaivian Lee - PG/SG, Florida
-87. Donnie Freeman - PF/C, Syracuse
-88. Ryan Conwell - SG, Louisville
-89. Emanuel Sharp - SG, Houston
-90. Zvonimir Ivisic - C, Illinois
-91. Jacob Cofie - PF, USC
-92. Milan Momcilovic - PF, Iowa State
-93. Thierry Darlan - SG/SF, Santa Clara
-94. Trey Kaufman - Renn - PF/C, Purdue
-95. Dillon Mitchell - PF, St. John's
-96. Anthony Robinson II - PG, Missouri
-97. Elyjah Freeman - SG/SF, Auburn
-98. Amael L'Etang - PF/C, Dayton
-99. KJ Lewis - SG, Georgetown
-100. Jaden Bradley - PG/SG, Arizona
+44. Joseph Tugler - PF/C, Houston
+45. Sergio de Larrea - PG/SG, Valencia (Spain)
+46. Milos Uzan - PG, Houston
+47. Xaivian Lee - PG/SG, Florida
+48. Dailyn Swain - SG/SF, Texas
+49. Adam Atamna - SG, ASVEL (France)
+50. Baba Miller - PF/C, Cincinnati
+51. Wesley Yates - SG, Washington
+52. Tahaad Pettiford - PG, Auburn
+53. Trey Kaufman - Renn - PF/C, Purdue
+54. Moustapha Thiam - C, Cincinnati
+55. Otega Oweh - SG/SF, Kentucky
+56. Solo Ball - SG, UConn
+57. Boogie Fland - PG, Florida
+58. Kanon Catchings - SF, Georgia
+59. Dash Daniels - PG/SG, Melbourne United
+60. Zuby Ejiofor - C, St. John's
+61. Miles Byrd - SG/SF, San Diego State
+62. Dwayne Aristode - SF, Arizona
+63. Tomislav Ivisic - C, Illinois
+64. Darrion Williams - SF, NC State
+65. Brayden Burries - SG, Arizona
+66. Matthew Able - SF, NC State
+67. Isiah Harwell - SF, Houston
+68. Magoon Gwath - C, San Diego State
+69. Motiejus Krivas - C, Arizona
+70. Ognjen Srzentic - SG/SF, Mega Superbet (Serbia)
+71. Ivan Kharchenkov - SF, Arizona
+72. Paul McNeil Jr. - SG, NC State
+73. Michael Ruzic - PF/C, Joventut (Spain)
+74. Ian Jackson - SG, St. John's
+75. Mackenzie Mgbako - SF, Texas A&M
+76. Johann Grunloh - PF/C, Virginia
+77. Jackson McAndrew - PF, Creighton
+78. Andrej Stojakovic - SG/SF, Illinois
+79. Nolan Winter - PF/C, Wisconsin
+80. Tucker DeVries - SG/SF, Indiana
+81. Luigi Suigo - C, Mega Superbet (Serbia)
+82. Kwame Evans Jr. - PF, Oregon
+83. Kylan Boswell - PG/SG, Illinois
+84. Tobi Lawal - PF, Virginia Tech
+85. Josh Dix - SG/SF, Creighton
+86. Mouhamed Faye - PF/C, Paris Basket (France)
+87. John Blackwell - SG/SF, Wisconsin
+88. Tyrone Riley IV - SG/SF, San Francisco
+89. Alvaro Folgueiras - PF, Iowa
+90. Jaland Lowe - PG, Kentucky
+91. Donnie Freeman - PF/C, Syracuse
+92. Ryan Conwell - SG, Louisville
+93. Zvonimir Ivisic - C, Illinois
+94. Jacob Cofie - PF, USC
+95. Thierry Darlan - SG/SF, Santa Clara
+96. Dillon Mitchell - PF, St. John's
+97. Anthony Robinson II - PG, Missouri
+98. Elyjah Freeman - SG/SF, Auburn
+99. Amael L'Etang - PF/C, Dayton
+100. KJ Lewis - SG, Georgetown
+101. Jaden Bradley - PG/SG, Arizona

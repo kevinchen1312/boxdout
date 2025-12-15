@@ -173,6 +173,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // CRITICAL: First, delete ALL existing watchlist entries for this user
+    // Then re-insert only the ones that are still in the watchlist
+    // This ensures that prospects moved to big board are removed from watchlist
+    console.log('[user-rankings POST] Clearing existing watchlist entries before re-inserting');
+    const { error: deleteError } = await supabaseAdmin
+      .from('user_rankings')
+      .delete()
+      .eq('user_id', supabaseUserId);
+    
+    if (deleteError) {
+      console.error('[user-rankings POST] Error clearing watchlist:', deleteError);
+      // Continue anyway - we'll try to insert the new ones
+    } else {
+      console.log('[user-rankings POST] Cleared existing watchlist entries');
+    }
+
     // Process each watchlist prospect
     for (const prospect of watchlist) {
       if (!prospect.id || !prospect.name) {
@@ -255,49 +271,20 @@ export async function POST(request: NextRequest) {
         continue;
       }
 
-      // Check if already in user_rankings
-      const { data: existingRanking } = await supabaseAdmin
+      // Insert into user_rankings (we've already cleared all entries above)
+      const { error: insertError } = await supabaseAdmin
         .from('user_rankings')
-        .select('id')
-        .eq('user_id', supabaseUserId)
-        .eq('prospect_id', prospectDbId)
-        .maybeSingle();
+        .insert({
+          user_id: supabaseUserId,
+          prospect_id: prospectDbId,
+          rank: prospect.watchlistRank || 1,
+          source: 'my_board',
+        });
 
-      if (!existingRanking) {
-        // Get max rank for this user
-        const { data: maxRankRow } = await supabaseAdmin
-          .from('user_rankings')
-          .select('rank')
-          .eq('user_id', supabaseUserId)
-          .order('rank', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        const newRank = (maxRankRow?.rank ?? 0) + 1;
-
-        // Insert into user_rankings
-        const { error: insertError } = await supabaseAdmin
-          .from('user_rankings')
-          .insert({
-            user_id: supabaseUserId,
-            prospect_id: prospectDbId,
-            rank: prospect.watchlistRank || newRank,
-            source: 'my_board',
-          });
-
-        if (insertError) {
-          console.error('Error inserting user ranking:', insertError);
-        }
+      if (insertError) {
+        console.error('Error inserting user ranking:', insertError, 'prospect:', prospect.name);
       } else {
-        // Update rank if it changed
-        const { error: updateError } = await supabaseAdmin
-          .from('user_rankings')
-          .update({ rank: prospect.watchlistRank || existingRanking.id })
-          .eq('id', existingRanking.id);
-
-        if (updateError) {
-          console.error('Error updating user ranking:', updateError);
-        }
+        console.log('[user-rankings POST] Inserted watchlist entry for:', prospect.name, 'rank:', prospect.watchlistRank || 1);
       }
     }
 

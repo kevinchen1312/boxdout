@@ -33,19 +33,33 @@ export default function SearchBox({
   onPickTeam: (t: TeamItem) => void;
   onPickProspect: (p: ProspectItem) => void;
 }) {
-  // Build team catalog from games - optimized to avoid unnecessary string operations
+  // Build team catalog from games - normalized to handle mascot variations
   const teamCatalog = useMemo(() => {
-    const m = new Map<string, string>(); // canon -> label
+    // Helper to normalize team name (strip mascot names)
+    const normalizeTeamKey = (name: string) => {
+      return name
+        .toLowerCase()
+        .replace(/\s+(tigers|bulldogs|bears|lions|wildcats|eagles|hawks|owls|panthers|warriors|knights|pirates|raiders|cougars|hornets|jayhawks|tar heels|blue devils|crimson tide|fighting irish|wolverines|seminoles|golden gophers|cornhuskers|spartans|nittany lions|mountaineers|boilermakers|hoosiers|flyers|explorers|rams|colonials|revolutionaries|ramblers|monarchs|tribe|shock|royals|cowboys|dragons|dukes|miners|ragin' cajuns|cajuns)$/i, '')
+        .replace(/[^a-z0-9]+/g, '')
+        .trim();
+    };
+    
+    const m = new Map<string, string>(); // normalized canon -> label (prefer longer/more complete name)
     for (const g of allGamesFull) {
       const home = g.homeTeam.displayName || g.homeTeam.name || '';
       const away = g.awayTeam.displayName || g.awayTeam.name || '';
       if (home) {
-        const homeKey = home.toLowerCase().replace(/[^a-z0-9]+/g, '');
-        if (!m.has(homeKey)) m.set(homeKey, home);
+        const homeKey = normalizeTeamKey(home);
+        // Prefer longer/more complete team names (e.g., "Norfolk State Spartans" over "Norfolk State")
+        if (!m.has(homeKey) || home.length > (m.get(homeKey)?.length || 0)) {
+          m.set(homeKey, home);
+        }
       }
       if (away) {
-        const awayKey = away.toLowerCase().replace(/[^a-z0-9]+/g, '');
-        if (!m.has(awayKey)) m.set(awayKey, away);
+        const awayKey = normalizeTeamKey(away);
+        if (!m.has(awayKey) || away.length > (m.get(awayKey)?.length || 0)) {
+          m.set(awayKey, away);
+        }
       }
     }
     return [...m.entries()].map(([canon, label]) => ({ 
@@ -139,30 +153,37 @@ export default function SearchBox({
     };
   }, [dq]);
 
-  // Combine team, prospect, and watchlist results - optimized to avoid unnecessary sorting
+  // Combine team, prospect, and watchlist results - deduplicate by name
   const results = useMemo(() => {
     if (!dq.trim()) return [];
     
     const teamResults = resolveTeams(dq, teamCatalog);
     const prospectResults = resolveProspects(dq, prospectCatalog);
     
-    // Pre-allocate array with known size
-    const combined: SearchResult[] = new Array(teamResults.length + prospectResults.length + watchlistResults.length);
-    let idx = 0;
+    const combined: SearchResult[] = [];
+    const seenNames = new Set<string>();
     
     // Add teams first (already sorted by resolveTeams)
     for (let i = 0; i < teamResults.length; i++) {
-      combined[idx++] = { type: 'team' as const, item: teamResults[i] };
+      combined.push({ type: 'team' as const, item: teamResults[i] });
     }
     
-    // Add prospects (already sorted by resolveProspects)
-    for (let i = 0; i < prospectResults.length; i++) {
-      combined[idx++] = { type: 'prospect' as const, item: prospectResults[i] };
-    }
-    
-    // Add watchlist players
+    // Add watchlist players first (they have the Watchlist badge, more informative)
     for (let i = 0; i < watchlistResults.length; i++) {
-      combined[idx++] = { type: 'watchlist_player' as const, item: watchlistResults[i] };
+      const name = watchlistResults[i].name.toLowerCase().trim();
+      if (!seenNames.has(name)) {
+        seenNames.add(name);
+        combined.push({ type: 'watchlist_player' as const, item: watchlistResults[i] });
+      }
+    }
+    
+    // Add non-watchlist prospects (skip if already added as watchlist player)
+    for (let i = 0; i < prospectResults.length; i++) {
+      const name = prospectResults[i].label.toLowerCase().trim();
+      if (!seenNames.has(name)) {
+        seenNames.add(name);
+        combined.push({ type: 'prospect' as const, item: prospectResults[i] });
+      }
     }
     
     return combined;

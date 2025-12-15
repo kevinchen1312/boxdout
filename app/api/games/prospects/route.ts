@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { loadAllSchedules } from '@/lib/loadSchedules';
+import { loadAllSchedules, buildGameKey } from '@/lib/loadSchedules';
 import type { RankingSource } from '@/lib/loadProspects';
 import { auth } from '@clerk/nextjs/server';
 import { enrichWithLiveScores } from '@/lib/loadSchedulesFromScoreboard';
 import { localYMD } from '@/app/utils/dateKey';
-import { getBigBoardAndWatchlistProspects, buildTrackedPlayersMap, decorateGamesWithTrackedPlayers } from '@/lib/trackedPlayers';
+import { getBigBoardAndWatchlistProspects } from '@/lib/loadProspects';
+import { buildTrackedPlayersMap, decorateGamesWithTrackedPlayers } from '@/lib/trackedPlayers';
+import type { TrackedPlayerInfo } from '@/lib/trackedPlayers';
 import type { GameWithProspects } from '@/app/utils/gameMatching';
+import type { Prospect } from '@/app/types/prospect';
 
 /**
  * Creates a canonical player ID from name and team (same as in lib/trackedPlayers.ts)
@@ -163,6 +166,533 @@ function filterGamesByProspectIds(
   return filtered;
 }
 
+/**
+ * Fast path: Query database directly for watchlist player games
+ * Returns games if found, null if fast path should be skipped
+ */
+async function tryFastPath(
+  clerkUserId: string,
+  source: RankingSource,
+  prospectIds: Set<string>,
+  prospectNames: Set<string>,
+  prospectTeams: Set<string>
+): Promise<NextResponse | null> {
+  try {
+    const { supabaseAdmin, getSupabaseUserId } = await import('@/lib/supabase');
+    const supabaseUserId = await getSupabaseUserId(clerkUserId);
+    
+    if (!supabaseUserId) {
+      return null;
+    }
+
+    // Query for watchlist players matching these names/teams
+    // Also try to match by prospect ID if we can extract it from the prospectIds
+    const { data: rankings } = await supabaseAdmin
+      .from('user_rankings')
+      .select(`
+        rank,
+        prospects!inner(
+          id,
+          full_name,
+          team_name,
+          international_team_id,
+          espn_team_id,
+          source,
+          espn_id
+        )
+      `)
+      .eq('user_id', supabaseUserId);
+    
+    if (!rankings || rankings.length === 0) {
+      console.log('[API/Prospects] No rankings found for user, fast path skipped');
+      return null;
+    }
+
+    // Try to match by prospect ID first (more reliable)
+    // prospectIds are in format "name|team", so we need to match by name/team
+    // But also check if any prospectIds match espn_id directly
+    const prospectIdArray = Array.from(prospectIds);
+    const matchingRankings = rankings.filter((r: any) => {
+      if (!r.prospects) return false;
+      
+      const prospect = r.prospects;
+      const name = (prospect.full_name || '').toLowerCase().trim();
+      const team = (prospect.team_name || '').toLowerCase().trim();
+      const espnId = prospect.espn_id || '';
+      
+      // Check if any prospectId matches the espn_id directly
+      if (prospectIdArray.some(pid => pid === espnId || espnId.includes(pid) || pid.includes(espnId))) {
+        return true;
+      }
+      
+      // Match by name/team (original logic)
+      return Array.from(prospectNames).some(pn => {
+        const pnLower = pn.toLowerCase().trim();
+        return name.includes(pnLower) || pnLower.includes(name);
+      }) || Array.from(prospectTeams).some(pt => {
+        const ptLower = pt.toLowerCase().trim();
+        return team.includes(ptLower) || ptLower.includes(team);
+      });
+    });
+    
+    if (matchingRankings.length === 0) {
+      console.log(`[API/Prospects] No matching prospects found. Looking for: ${Array.from(prospectNames).join(', ')}, teams: ${Array.from(prospectTeams).join(', ')}`);
+      console.log(`[API/Prospects] Available prospects: ${rankings.map((r: any) => `${r.prospects?.full_name} (${r.prospects?.team_name})`).join(', ')}`);
+      return null;
+    }
+    
+    console.log(`[API/Prospects] ✅ Fast path: Found ${matchingRankings.length} matching prospects`);
+
+    console.log(`[API/Prospects] Found ${matchingRankings.length} matching prospects in database`);
+    
+    // Separate prospects by type: international, NCAA, NBL
+    const internationalProspects = matchingRankings.filter((r: any) => r.prospects?.international_team_id);
+    const ncaaProspects = matchingRankings.filter((r: any) => 
+      r.prospects?.espn_team_id && !r.prospects?.international_team_id
+    );
+    const nblProspects = matchingRankings.filter((r: any) => 
+      r.prospects?.espn_team_id && (r.prospects?.team_name || '').toLowerCase().includes('melbourne') ||
+      (r.prospects?.team_name || '').toLowerCase().includes('new zealand breakers') ||
+      (r.prospects?.team_name || '').toLowerCase().includes('adelaide') ||
+      (r.prospects?.team_name || '').toLowerCase().includes('brisbane') ||
+      (r.prospects?.team_name || '').toLowerCase().includes('cairns') ||
+      (r.prospects?.team_name || '').toLowerCase().includes('illawarra') ||
+      (r.prospects?.team_name || '').toLowerCase().includes('perth') ||
+      (r.prospects?.team_name || '').toLowerCase().includes('south east melbourne') ||
+      (r.prospects?.team_name || '').toLowerCase().includes('southeast melbourne') ||
+      (r.prospects?.team_name || '').toLowerCase().includes('sydney') ||
+      (r.prospects?.team_name || '').toLowerCase().includes('tasmania')
+    );
+    
+    const allGames: any[] = [];
+    
+    // Query international team schedules
+    if (internationalProspects.length > 0) {
+      const teamIds = internationalProspects
+        .map((r: any) => r.prospects.international_team_id)
+        .filter(Boolean);
+      
+      if (teamIds.length > 0) {
+        console.log(`[API/Prospects] Querying international_team_schedules for ${teamIds.length} team IDs`);
+        const { data: gamesData } = await supabaseAdmin
+          .from('international_team_schedules')
+          .select('*')
+          .in('team_id', teamIds)
+          .order('date', { ascending: true });
+        
+        if (gamesData) {
+          allGames.push(...gamesData.map((g: any) => ({ ...g, league: 'international' })));
+        }
+      }
+    }
+    
+    // Query NCAA team schedules using espn_team_id
+    if (ncaaProspects.length > 0) {
+      const espnTeamIds = ncaaProspects
+        .map((r: any) => r.prospects?.espn_team_id)
+        .filter(Boolean);
+      
+      if (espnTeamIds.length > 0) {
+        console.log(`[API/Prospects] Querying ncaa_team_schedules for ${espnTeamIds.length} ESPN team IDs: ${espnTeamIds.join(', ')}`);
+        const { data: gamesData } = await supabaseAdmin
+          .from('ncaa_team_schedules')
+          .select('*')
+          .in('espn_team_id', espnTeamIds)
+          .order('date', { ascending: true });
+        
+        if (gamesData) {
+          allGames.push(...gamesData.map((g: any) => ({ ...g, league: 'ncaa' })));
+          console.log(`[API/Prospects] Found ${gamesData.length} NCAA games from database`);
+        }
+      }
+    }
+    
+    // Query NBL team schedules using espn_team_id
+    if (nblProspects.length > 0) {
+      const espnTeamIds = nblProspects
+        .map((r: any) => r.prospects?.espn_team_id)
+        .filter(Boolean);
+      
+      if (espnTeamIds.length > 0) {
+        console.log(`[API/Prospects] Querying nbl_team_schedules for ${espnTeamIds.length} ESPN team IDs: ${espnTeamIds.join(', ')}`);
+        const { data: gamesData } = await supabaseAdmin
+          .from('nbl_team_schedules')
+          .select('*')
+          .in('espn_team_id', espnTeamIds)
+          .order('date', { ascending: true });
+        
+        if (gamesData) {
+          allGames.push(...gamesData.map((g: any) => ({ ...g, league: 'nbl' })));
+          console.log(`[API/Prospects] Found ${gamesData.length} NBL games from database`);
+        }
+      }
+    }
+    
+    if (allGames.length === 0) {
+      return null;
+    }
+
+    const gamesData = allGames;
+    console.log(`[API/Prospects] ⚡ FAST PATH: Found ${gamesData.length} total games directly from database (international: ${internationalProspects.length}, NCAA: ${ncaaProspects.length}, NBL: ${nblProspects.length})`);
+    
+    // Convert database games to GameWithProspects format
+    // Group games by unique game key first to avoid duplicates
+    const gamesMap = new Map<string, GameWithProspects>();
+    
+    // Collect all unique team IDs from games to query ALL prospects on both teams
+    const homeTeamIds = new Set<string>();
+    const awayTeamIds = new Set<string>();
+    const internationalTeamIds = new Set<string>();
+    
+    for (const gameData of gamesData) {
+      if (gameData.league === 'international') {
+        internationalTeamIds.add(gameData.home_team_id);
+        internationalTeamIds.add(gameData.away_team_id);
+      } else if (gameData.league === 'ncaa' || gameData.league === 'nbl') {
+        homeTeamIds.add(gameData.home_team_id);
+        awayTeamIds.add(gameData.away_team_id);
+      }
+    }
+    
+    // Query ALL prospects on all teams involved in these games
+    // Use the matchingRankings we already have, and only query for additional prospects if needed
+    // This is faster and avoids duplicate queries
+    let allTeamRankings: any[] = [...matchingRankings]; // Start with the matching prospects
+    
+    // Only query for additional prospects if we have games and need to find prospects on opposing teams
+    try {
+      if (internationalTeamIds.size > 0) {
+        // Query prospects first, then rankings
+        const { data: intlProspects, error: intlError } = await supabaseAdmin
+          .from('prospects')
+          .select('id, international_team_id')
+          .in('international_team_id', Array.from(internationalTeamIds));
+        
+        if (intlError) {
+          console.warn('[API/Prospects] Error querying international prospects:', intlError);
+        } else if (intlProspects && intlProspects.length > 0) {
+          const prospectIds = intlProspects.map(p => p.id);
+          const existingProspectIds = new Set(matchingRankings.map((r: any) => r.prospects?.id).filter(Boolean));
+          const newProspectIds = prospectIds.filter(id => !existingProspectIds.has(id));
+          
+          if (newProspectIds.length > 0) {
+            const { data: rankings, error: rankingsError } = await supabaseAdmin
+              .from('user_rankings')
+              .select(`
+                rank,
+                prospects!inner(
+                  id,
+                  full_name,
+                  team_name,
+                  position,
+                  international_team_id
+                )
+              `)
+              .eq('user_id', supabaseUserId)
+              .in('prospect_id', newProspectIds);
+            
+            if (rankingsError) {
+              console.warn('[API/Prospects] Error querying international rankings:', rankingsError);
+            } else if (rankings) {
+              allTeamRankings.push(...rankings);
+            }
+          }
+        }
+      }
+      
+      if (homeTeamIds.size > 0 || awayTeamIds.size > 0) {
+        const allEspnTeamIds = Array.from(new Set([...homeTeamIds, ...awayTeamIds]));
+        const { data: ncaaNblProspects, error: ncaaError } = await supabaseAdmin
+          .from('prospects')
+          .select('id, espn_team_id')
+          .in('espn_team_id', allEspnTeamIds);
+        
+        if (ncaaError) {
+          console.warn('[API/Prospects] Error querying NCAA/NBL prospects:', ncaaError);
+        } else if (ncaaNblProspects && ncaaNblProspects.length > 0) {
+          const prospectIds = ncaaNblProspects.map(p => p.id);
+          const existingProspectIds = new Set(matchingRankings.map((r: any) => r.prospects?.id).filter(Boolean));
+          const newProspectIds = prospectIds.filter(id => !existingProspectIds.has(id));
+          
+          if (newProspectIds.length > 0) {
+            const { data: rankings, error: rankingsError } = await supabaseAdmin
+              .from('user_rankings')
+              .select(`
+                rank,
+                prospects!inner(
+                  id,
+                  full_name,
+                  team_name,
+                  position,
+                  espn_team_id
+                )
+              `)
+              .eq('user_id', supabaseUserId)
+              .in('prospect_id', newProspectIds);
+            
+            if (rankingsError) {
+              console.warn('[API/Prospects] Error querying NCAA/NBL rankings:', rankingsError);
+            } else if (rankings) {
+              allTeamRankings.push(...rankings);
+            }
+          }
+        }
+      }
+    } catch (queryError) {
+      console.error('[API/Prospects] Error querying all team rankings, continuing with matching prospects only:', queryError);
+      // Continue with just the matchingRankings - games will still be returned
+    }
+    
+    console.log(`[API/Prospects] ⚡ FAST PATH: Found ${allTeamRankings.length} total prospects across all teams in games (${matchingRankings.length} matching, ${allTeamRankings.length - matchingRankings.length} additional)`);
+    
+    // Get tracked players map BEFORE creating games to check watchlist status
+    let trackedMap: Record<string, TrackedPlayerInfo> = {};
+    if (clerkUserId) {
+      try {
+        const { bigBoard, watchlist } = await getBigBoardAndWatchlistProspects(source, clerkUserId);
+        trackedMap = buildTrackedPlayersMap(bigBoard, watchlist);
+        console.log(`[API/Prospects] ⚡ FAST PATH: Built tracked players map (${Object.keys(trackedMap).length} players)`);
+      } catch (err) {
+        console.error('[API/Prospects] Failed to build tracked players map:', err);
+      }
+    }
+    
+    for (const gameData of gamesData) {
+      // Find ALL prospects on both teams for this game
+      let teamRankings: any[] = [];
+      
+      if (gameData.league === 'international') {
+        // International: match by team_id UUID for both home and away
+        teamRankings = allTeamRankings.filter((r: any) => {
+          const prospectTeamId = r.prospects?.international_team_id;
+          return prospectTeamId === gameData.home_team_id || prospectTeamId === gameData.away_team_id;
+        });
+      } else if (gameData.league === 'ncaa' || gameData.league === 'nbl') {
+        // NCAA/NBL: match by espn_team_id for both home and away
+        const homeTeamId = gameData.home_team_id;
+        const awayTeamId = gameData.away_team_id;
+        teamRankings = allTeamRankings.filter((r: any) => {
+          const prospectEspnTeamId = r.prospects?.espn_team_id;
+          return prospectEspnTeamId === homeTeamId || prospectEspnTeamId === awayTeamId;
+        });
+      }
+      
+      // Use date_key from database if available (already in YYYY-MM-DD format)
+      // Otherwise parse from date timestamp
+      let dateKey: string;
+      if (gameData.date_key) {
+        dateKey = gameData.date_key; // Already in YYYY-MM-DD format
+      } else {
+        // Parse from timestamp - use local date, not UTC, to avoid timezone shifts
+        const gameDate = new Date(gameData.date);
+        // Get local date components to avoid timezone issues
+        const year = gameDate.getFullYear();
+        const month = String(gameDate.getMonth() + 1).padStart(2, '0');
+        const day = String(gameDate.getDate()).padStart(2, '0');
+        dateKey = `${year}-${month}-${day}`;
+      }
+      
+      // Parse date for time extraction (use original date for time)
+      const gameDate = new Date(gameData.date);
+      
+      // If no prospects found for this game, skip it (we only show games with prospects)
+      // But log it for debugging
+      if (teamRankings.length === 0) {
+        console.log(`[API/Prospects] ⚡ FAST PATH: No prospects found for game ${gameData.home_team_name} vs ${gameData.away_team_name} on ${dateKey}`);
+        continue;
+      }
+      const hours = gameDate.getUTCHours();
+      const minutes = gameDate.getUTCMinutes();
+      const isoTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
+      
+      let sourceIdentifier: string;
+      if (gameData.league === 'international') {
+        sourceIdentifier = `intl-${gameData.league_id || 'unknown'}`;
+      } else if (gameData.league === 'ncaa') {
+        sourceIdentifier = 'ncaa';
+      } else {
+        sourceIdentifier = 'nbl';
+      }
+      
+      const key = buildGameKey(
+        dateKey,
+        isoTime,
+        gameData.home_team_name,
+        gameData.away_team_name,
+        gameData.venue || undefined,
+        sourceIdentifier
+      );
+      
+      // Get or create game object
+      let game = gamesMap.get(key);
+      const homeDisplayName = gameData.home_team_display_name || gameData.home_team_name;
+      const awayDisplayName = gameData.away_team_display_name || gameData.away_team_name;
+      
+      if (!game) {
+        const sortTimestamp = hours * 60 + minutes;
+        
+        game = {
+          id: gameData.game_id || `${gameData.league || 'espn'}-${gameData.date}-${gameData.home_team_id}-${gameData.away_team_id}`,
+          date: dateKey,
+          dateKey,
+          sortTimestamp,
+          // Store tipoff in ET (as stored in database), client will convert to local timezone
+          tipoff: gameDate.toLocaleTimeString('en-US', { 
+            hour: 'numeric', 
+            minute: '2-digit',
+            hour12: true,
+            timeZone: 'America/New_York'
+          }) + ' ET',
+          homeTeam: {
+            id: String(gameData.home_team_id),
+            name: gameData.home_team_name,
+            displayName: homeDisplayName,
+            logo: gameData.home_team_logo || undefined,
+            score: gameData.home_score || undefined,
+          },
+          awayTeam: {
+            id: String(gameData.away_team_id),
+            name: gameData.away_team_name,
+            displayName: awayDisplayName,
+            logo: gameData.away_team_logo || undefined,
+            score: gameData.away_score || undefined,
+          },
+          status: gameData.status || 'Scheduled',
+          statusDetail: gameData.status_detail || undefined,
+          locationType: gameData.location_type === 'neutral' ? 'neutral' : (gameData.location_type === 'home' ? 'home' : 'away'),
+          venue: gameData.venue || undefined,
+          tv: gameData.broadcasts?.[0] || undefined,
+          note: gameData.notes || undefined,
+          prospects: [],
+          homeProspects: [],
+          awayProspects: [],
+          // Add gameKey for client-side merging
+          gameKey: key,
+        } as GameWithProspects & { gameKey: string };
+        gamesMap.set(key, game);
+      }
+      
+      // Add ALL prospects from matching teams to the game
+      for (const ranking of teamRankings) {
+        if (!ranking.prospects) continue;
+        const prospectData: any = ranking.prospects;
+        
+        // Check if this is a watchlist player (not on big board)
+        const prospectId = createCanonicalPlayerId(
+          prospectData.full_name || '',
+          prospectData.team_name || '',
+          prospectData.team_name || ''
+        );
+        const tracked = trackedMap[prospectId];
+        const isWatchlistPlayer = tracked?.isWatchlist === true;
+        
+        const prospect: Prospect = {
+          name: prospectData.full_name || '',
+          team: prospectData.team_name || '',
+          // Only assign rank if NOT a watchlist player
+          rank: isWatchlistPlayer ? undefined : ranking.rank,
+          position: prospectData.position || '',
+          teamDisplay: prospectData.team_name || '',
+          isWatchlist: isWatchlistPlayer,
+        };
+        
+        // Determine prospect side by comparing prospect's team ID to game's home/away team IDs
+        let isHome = false;
+        let isAway = false;
+        
+        if (gameData.league === 'international') {
+          // International: compare prospect's international_team_id to game's home/away team IDs
+          const prospectTeamId = prospectData.international_team_id;
+          isHome = String(gameData.home_team_id) === String(prospectTeamId);
+          isAway = String(gameData.away_team_id) === String(prospectTeamId);
+        } else {
+          // NCAA/NBL: compare prospect's espn_team_id to game's home/away team IDs
+          const prospectEspnTeamId = prospectData.espn_team_id;
+          isHome = String(gameData.home_team_id) === String(prospectEspnTeamId);
+          isAway = String(gameData.away_team_id) === String(prospectEspnTeamId);
+        }
+        
+        // Log if we can't determine side (shouldn't happen if teamRankings filtering is correct)
+        if (!isHome && !isAway) {
+          console.warn(`[API/Prospects] ⚠️ Could not determine prospect side for ${prospectData.full_name} in game ${gameData.home_team_name} vs ${gameData.away_team_name}`);
+          console.warn(`[API/Prospects]   Prospect team ID: ${prospectData.international_team_id || prospectData.espn_team_id}`);
+          console.warn(`[API/Prospects]   Game home ID: ${gameData.home_team_id}, away ID: ${gameData.away_team_id}`);
+        }
+        
+        // Add to appropriate arrays
+        game.prospects.push(prospect);
+        if (isHome) {
+          game.homeProspects.push(prospect);
+        } else if (isAway) {
+          game.awayProspects.push(prospect);
+        } else {
+          // Final fallback: add to both
+          game.homeProspects.push(prospect);
+          game.awayProspects.push(prospect);
+        }
+      }
+    }
+    
+    
+    // Group games by date
+    const gamesByDate: Record<string, GameWithProspects[]> = {};
+    for (const game of gamesMap.values()) {
+      if (!gamesByDate[game.dateKey || game.date]) {
+        gamesByDate[game.dateKey || game.date] = [];
+      }
+      gamesByDate[game.dateKey || game.date].push(game);
+    }
+    
+    console.log(`[API/Prospects] ⚡ FAST PATH: Converted ${Object.values(gamesByDate).flat().length} games across ${Object.keys(gamesByDate).length} dates`);
+    
+    // Decorate with tracked players (for homeTrackedPlayers/awayTrackedPlayers arrays)
+    if (clerkUserId && Object.keys(trackedMap).length > 0) {
+      try {
+        const decoratedGamesByDate: Record<string, GameWithProspects[]> = {};
+        for (const [dateKey, games] of Object.entries(gamesByDate)) {
+          const decorated = decorateGamesWithTrackedPlayers(games, trackedMap);
+          // Merge decorated properties back into original games
+          decoratedGamesByDate[dateKey] = games.map((game, idx) => ({
+            ...game,
+            ...decorated[idx],
+          })) as GameWithProspects[];
+        }
+        
+        Object.assign(gamesByDate, decoratedGamesByDate);
+        console.log(`[API/Prospects] ⚡ FAST PATH: Decorated games with tracked players`);
+      } catch (err) {
+        console.error('[API/Prospects] Failed to decorate games with tracked players:', err);
+      }
+    }
+    
+    // Enrich today's games with live scores in background
+    const todayKey = localYMD(new Date());
+    if (gamesByDate[todayKey] && gamesByDate[todayKey].length > 0) {
+      enrichWithLiveScores(gamesByDate[todayKey]).catch(err => 
+        console.error('[API/Prospects] Background score enrichment failed:', err)
+      );
+    }
+    
+    // Return fast path response
+    console.log(`[API/Prospects] ⚡ FAST PATH: Returning ${Object.values(gamesByDate).flat().length} games without loading all schedules`);
+    return NextResponse.json(
+      { games: gamesByDate, source },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+          'X-Generated-At': new Date().toISOString(),
+          'X-Fast-Path': 'true',
+        },
+      }
+    );
+  } catch (err) {
+    console.warn('[API/Prospects] Fast path query failed, falling back to loadAllSchedules:', err);
+    return null;
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -213,89 +743,10 @@ export async function GET(request: NextRequest) {
       console.log(`[API/Prospects] Looking for teams: ${Array.from(prospectTeams).join(', ')}`);
       console.log(`[API/Prospects] Looking for players: ${Array.from(prospectNames).join(', ')}`);
       
-      // Try to query international_team_schedules directly for these teams
-      // This will be much faster than loadAllSchedules
-      try {
-        const { supabaseAdmin, getSupabaseUserId } = await import('@/lib/supabase');
-        const supabaseUserId = await getSupabaseUserId(clerkUserId);
-        
-        if (supabaseUserId) {
-          // Query for international roster players matching these names/teams
-          const { data: rankings } = await supabaseAdmin
-            .from('user_rankings')
-            .select(`
-              rank,
-              prospects!inner(
-                id,
-                full_name,
-                team_name,
-                international_team_id,
-                source
-              )
-            `)
-            .eq('user_id', supabaseUserId);
-          
-          if (rankings && rankings.length > 0) {
-            // Find matching prospects
-            const matchingRankings = rankings.filter((r: any) => {
-              const name = (r.prospects?.full_name || '').toLowerCase().trim();
-              const team = (r.prospects?.team_name || '').toLowerCase().trim();
-              return Array.from(prospectNames).some(pn => name.includes(pn.toLowerCase())) ||
-                     Array.from(prospectTeams).some(pt => team.includes(pt.toLowerCase()));
-            });
-            
-            if (matchingRankings.length > 0) {
-              console.log(`[API/Prospects] Found ${matchingRankings.length} matching prospects in database`);
-              
-              // Get team IDs for international roster players
-              const teamIds = matchingRankings
-                .filter((r: any) => r.prospects?.international_team_id && r.prospects?.source === 'international-roster')
-                .map((r: any) => r.prospects.international_team_id);
-              
-              if (teamIds.length > 0) {
-                console.log(`[API/Prospects] Querying international_team_schedules for ${teamIds.length} team IDs: ${teamIds.join(', ')}`);
-                
-                // DEBUG: Log what teams we found for Theo Maledon
-                matchingRankings.forEach((r: any) => {
-                  const name = r.prospects?.full_name || '';
-                  const team = r.prospects?.team_name || '';
-                  const teamId = r.prospects?.international_team_id;
-                  if (name.toLowerCase().includes('maledon') || name.toLowerCase().includes('theo')) {
-                    console.log(`[API/Prospects] DEBUG Theo Maledon: name="${name}", team="${team}", teamId=${teamId}, source="${r.prospects?.source}"`);
-                  }
-                });
-                
-                // Query games directly
-                const { data: gamesData } = await supabaseAdmin
-                  .from('international_team_schedules')
-                  .select('*')
-                  .in('team_id', teamIds)
-                  .order('date', { ascending: true });
-                
-                if (gamesData && gamesData.length > 0) {
-                  console.log(`[API/Prospects] ✓ Found ${gamesData.length} games directly from database (FAST PATH)`);
-                  
-                  // DEBUG: Check what teams these games are for
-                  const uniqueTeams = new Set<string>();
-                  gamesData.forEach((g: any) => {
-                    uniqueTeams.add(g.home_team_name);
-                    uniqueTeams.add(g.away_team_name);
-                  });
-                  console.log(`[API/Prospects] DEBUG Games are for teams: ${Array.from(uniqueTeams).join(', ')}`);
-                  
-                  // TODO: Convert these games to GameWithProspects format and return early
-                  // For now, fall through to loadAllSchedules for proper formatting
-                } else {
-                  console.log(`[API/Prospects] ⚠️ No games found in international_team_schedules for team IDs: ${teamIds.join(', ')}`);
-                }
-              } else {
-                console.log(`[API/Prospects] ⚠️ No international_team_id found for matching prospects`);
-              }
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('[API/Prospects] Fast path query failed, falling back to loadAllSchedules:', err);
+      // Try fast path - if it succeeds, return early
+      const fastPathResult = await tryFastPath(clerkUserId, source, prospectIds, prospectNames, prospectTeams);
+      if (fastPathResult) {
+        return fastPathResult;
       }
     }
     
@@ -338,7 +789,12 @@ export async function GET(request: NextRequest) {
         // Decorate filtered games
         const decoratedGamesByDate: Record<string, GameWithProspects[]> = {};
         for (const [dateKey, games] of Object.entries(filteredGames)) {
-          decoratedGamesByDate[dateKey] = decorateGamesWithTrackedPlayers(games, trackedMap);
+          const decorated = decorateGamesWithTrackedPlayers(games, trackedMap);
+          // Merge decorated properties back into original games
+          decoratedGamesByDate[dateKey] = games.map((game, idx) => ({
+            ...game,
+            ...decorated[idx],
+          })) as GameWithProspects[];
         }
         
         // Replace filteredGames with decorated version

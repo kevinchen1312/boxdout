@@ -1,6 +1,7 @@
 import type { Prospect } from '@/app/types/prospect';
-import { loadProspects } from './loadProspects';
 import type { RankingSource } from './loadProspects';
+// Import createCanonicalPlayerId from separate file to avoid pulling Node.js dependencies into client bundle
+import { createCanonicalPlayerId } from './createCanonicalPlayerId';
 
 export type TrackedPlayerType = 'myBoard' | 'watchlist';
 
@@ -15,59 +16,7 @@ export interface TrackedPlayerInfo {
   isWatchlist?: boolean; // true if watchlist, false if myBoard
 }
 
-/**
- * Creates a canonical player ID from name and team
- * This ID should be consistent across the app for matching
- */
-function createCanonicalPlayerId(name: string, team: string | undefined, teamDisplay?: string | undefined): string {
-  // Normalize name: lowercase, trim, remove extra spaces
-  const normalizedName = (name || '').toLowerCase().trim().replace(/\s+/g, ' ');
-  
-  // Use teamDisplay if available, otherwise team, otherwise empty
-  const teamToUse = (teamDisplay || team || '').trim();
-  
-  // Normalize team: lowercase, trim, remove common suffixes for matching
-  // Also remove parenthetical content like "(France)", "(Spain)"
-  let normalizedTeam = teamToUse
-    .toLowerCase()
-    .trim()
-    .replace(/\s*\([^)]*\)/g, '') // Remove parenthetical content
-    .replace(/\s+(basket|basketball|club|bc)$/i, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  
-  // For Partizan, normalize variations to just "partizan"
-  if (normalizedTeam.includes('partizan') || normalizedTeam.includes('mozzart')) {
-    normalizedTeam = 'partizan';
-  }
-  
-  // Create ID: name|team
-  return `${normalizedName}|${normalizedTeam}`;
-}
-
-/**
- * Separates prospects into big board and watchlist
- * This is needed because loadProspects returns a combined array
- */
-export async function getBigBoardAndWatchlistProspects(
-  source: RankingSource,
-  clerkUserId?: string
-): Promise<{ bigBoard: Prospect[]; watchlist: Prospect[] }> {
-  const allProspects = await loadProspects(source, clerkUserId);
-  
-  const bigBoard: Prospect[] = [];
-  const watchlist: Prospect[] = [];
-  
-  for (const prospect of allProspects) {
-    if (prospect.isWatchlist) {
-      watchlist.push(prospect);
-    } else {
-      bigBoard.push(prospect);
-    }
-  }
-  
-  return { bigBoard, watchlist };
-}
+// getBigBoardAndWatchlistProspects moved to loadProspects.ts to keep this file client-safe
 
 /**
  * Checks if a team is an international team (not NCAA)
@@ -103,6 +52,7 @@ export function buildTrackedPlayersMap(
   const debugPlayerNames = [
     'Tomislav Ivisic',
     'Andrej Stojakovic',
+    'Melo Baines',
     'Kylan Boswell',
     'Zvonimir Ivisic',
     'Donnie Freeman'
@@ -388,9 +338,12 @@ function matchProspectToTracked(
   return null;
 }
 
+// Common mascot names to strip from team names
+const MASCOT_SUFFIXES = /\s+(tigers|bulldogs|bears|lions|wildcats|eagles|hawks|owls|panthers|warriors|knights|pirates|raiders|cougars|hornets|jayhawks|tar\s*heels|blue\s*devils|crimson\s*tide|fighting\s*irish|wolverines|seminoles|golden\s*gophers|cornhuskers|spartans|nittany\s*lions|mountaineers|boilermakers|hoosiers|flyers|explorers|rams|colonials|revolutionaries|ramblers|monarchs|tribe|shock|royals|cowboys|dragons|dukes|miners|cajuns|volunteers|cardinals|bearcats|rebels|aggies|longhorns|sooners|buckeyes|trojans|bruins|huskies|ducks|beavers|sun\s*devils|utes|buffaloes|buffs|cyclones|red\s*raiders|horned\s*frogs|razorbacks|gamecocks|gators|hurricanes|hokies|cavaliers|terrapins|terps|badgers|hawkeyes|illini|orange|demon\s*deacons|yellow\s*jackets|wolfpack|wolf\s*pack|flames)$/i;
+
 /**
  * Normalizes team name for matching (similar to loadSchedules.ts)
- * Handles cases like "ASVEL (France)" -> "asvel"
+ * Handles cases like "ASVEL (France)" -> "asvel", "Norfolk State Spartans" -> "norfolkstate"
  */
 function normalizeTeamNameForMatching(name: string): string {
   let normalized = (name || '')
@@ -400,10 +353,13 @@ function normalizeTeamNameForMatching(name: string): string {
   // Remove parenthetical content like "(France)", "(Spain)", etc.
   normalized = normalized.replace(/\s*\([^)]*\)/g, '');
   
-  // Remove common suffixes
+  // Remove common suffixes (basketball club names)
   normalized = normalized
     .replace(/\s+(basket|basketball|club|bc)$/i, '')
     .trim();
+  
+  // Remove mascot names (Tigers, Spartans, etc.)
+  normalized = normalized.replace(MASCOT_SUFFIXES, '').trim();
   
   // Remove all non-alphanumeric characters for comparison
   normalized = normalized.replace(/[^a-z0-9]/g, '');
@@ -414,15 +370,38 @@ function normalizeTeamNameForMatching(name: string): string {
 /**
  * Checks if two team names match (handles variations like Lyon-Villeurbanne/ASVEL)
  */
+// School qualifiers that indicate DIFFERENT schools (not mascots)
+const SCHOOL_QUALIFIERS = ['state', 'tech', 'christian', 'am', 'southern', 'northern', 'eastern', 'western', 'central', 'atlantic', 'pacific', 'international', 'methodist', 'baptist', 'lutheran', 'coastal', 'poly'];
+
 function teamNamesMatch(name1: string, name2: string): boolean {
   const normalized1 = normalizeTeamNameForMatching(name1);
   const normalized2 = normalizeTeamNameForMatching(name2);
   
+  // Require both names to be non-empty after normalization
+  if (!normalized1 || !normalized2) return false;
+  
   if (normalized1 === normalized2) return true;
   
-  // Check if one contains the other (for variations like "Lyon-Villeurbanne" vs "Lyon")
-  if (normalized1.includes(normalized2) || normalized2.includes(normalized1)) {
-    return true;
+  // Check if one starts with the other (for variations like "Liberty" vs "Liberty Flames")
+  // But NOT for different schools like "Alabama" vs "Alabama State"
+  if (normalized1.length >= 5 && normalized2.length >= 5) {
+    let shorter = '', longer = '';
+    if (normalized1.startsWith(normalized2)) {
+      shorter = normalized2;
+      longer = normalized1;
+    } else if (normalized2.startsWith(normalized1)) {
+      shorter = normalized1;
+      longer = normalized2;
+    }
+    
+    if (shorter && longer) {
+      const suffix = longer.substring(shorter.length);
+      // If suffix starts with a school qualifier, it's a DIFFERENT school
+      const isSchoolQualifier = SCHOOL_QUALIFIERS.some(q => suffix.startsWith(q));
+      if (!isSchoolQualifier) {
+        return true; // Suffix is likely a mascot - allow the match
+      }
+    }
   }
   
   // Handle known variations
@@ -496,6 +475,12 @@ export function decorateGamesWithTrackedPlayers(
   let adamMatchCount = 0;
   let adamGameCount = 0;
   
+  // Log watchlist players in trackedMap (for debugging Melo Baines issue)
+  const watchlistPlayers = Object.values(trackedMap).filter(t => t.type === 'watchlist');
+  if (watchlistPlayers.length > 0) {
+    console.log(`[decorateGames] Found ${watchlistPlayers.length} watchlist players in trackedMap:`, 
+      watchlistPlayers.map(p => `${p.playerName} (team: "${p.team}", teamDisplay: "${p.teamDisplay}")`));
+  }
   
   const decorated = games.map(game => {
     const homeTracked: TrackedPlayerInfo[] = [];
@@ -601,10 +586,73 @@ export function decorateGamesWithTrackedPlayers(
       }
     }
     
-    // Step 2: Also add tracked players whose teams match the game's teams
-    // BUT: ONLY for international teams (Partizan, ASVEL, Valencia, Lyon, etc.)
-    // NCAA teams should ONLY be matched via Step 1 (prospects already in the game)
-    // This prevents matching "Michigan" with "Michigan State", "Iowa" with "Iowa State", etc.
+    // Step 2: Add WATCHLIST players to ALL games (including NCAA) using team matching
+    // Watchlist players are explicitly tracked by the user, so we should add them to all their team's games
+    for (const tracked of Object.values(trackedMap)) {
+      if (usedPlayerIds.has(tracked.playerId)) continue; // Already added
+      
+      // Only do team-based matching for watchlist players
+      if (tracked.type !== 'watchlist') continue;
+      
+      const trackedTeam = tracked.teamDisplay || tracked.team || '';
+      
+      // If no team info, we can't match by team - skip
+      if (!trackedTeam) continue;
+      
+      // Normalize team names for comparison (handles "Norfolk State Spartans" vs "Norfolk State")
+      const normalizedTrackedTeam = normalizeTeamNameForMatching(trackedTeam);
+      const normalizedHomeTeam = normalizeTeamNameForMatching(homeTeamName);
+      const normalizedAwayTeam = normalizeTeamNameForMatching(awayTeamName);
+      
+      // Skip if tracked team normalizes to empty or too short
+      if (!normalizedTrackedTeam || normalizedTrackedTeam.length < 3) continue;
+      
+      // Check for match - use strict matching to avoid "Alabama" matching "Alabama State"
+      const isStrictTeamMatch = (team1: string, team2: string): boolean => {
+        if (!team1 || !team2) return false;
+        if (team1 === team2) return true;
+        if (team1.length < 5 || team2.length < 5) return false;
+        
+        let shorter = '', longer = '';
+        if (team1.startsWith(team2)) {
+          shorter = team2;
+          longer = team1;
+        } else if (team2.startsWith(team1)) {
+          shorter = team1;
+          longer = team2;
+        } else {
+          return false;
+        }
+        
+        const suffix = longer.substring(shorter.length);
+        // If suffix starts with a school qualifier, it's a DIFFERENT school
+        return !SCHOOL_QUALIFIERS.some(q => suffix.startsWith(q));
+      };
+      
+      const exactHomeMatch = normalizedTrackedTeam === normalizedHomeTeam;
+      const exactAwayMatch = normalizedTrackedTeam === normalizedAwayTeam;
+      const substringHomeMatch = isStrictTeamMatch(normalizedHomeTeam, normalizedTrackedTeam);
+      const substringAwayMatch = isStrictTeamMatch(normalizedAwayTeam, normalizedTrackedTeam);
+      
+      // Determine which side to add to (prefer exact matches, then away for ties)
+      if (exactAwayMatch) {
+        awayTracked.push(tracked);
+        usedPlayerIds.add(tracked.playerId);
+      } else if (exactHomeMatch) {
+        homeTracked.push(tracked);
+        usedPlayerIds.add(tracked.playerId);
+      } else if (substringAwayMatch && !substringHomeMatch) {
+        awayTracked.push(tracked);
+        usedPlayerIds.add(tracked.playerId);
+      } else if (substringHomeMatch && !substringAwayMatch) {
+        homeTracked.push(tracked);
+        usedPlayerIds.add(tracked.playerId);
+      }
+      // If no match, don't add (player's team doesn't match this game)
+    }
+    
+    // Step 3: Also add international players using team name variations
+    // This handles cases like Partizan/Partizan Mozzart Bet, ASVEL/Lyon-Villeurbanne
     const homeTeamLower = homeTeamName.toLowerCase();
     const awayTeamLower = awayTeamName.toLowerCase();
     const isInternationalGame = homeTeamLower.includes('partizan') || 
@@ -618,8 +666,6 @@ export function decorateGamesWithTrackedPlayers(
                                homeTeamLower.includes('villeurbanne') ||
                                awayTeamLower.includes('villeurbanne');
     
-    // ONLY run team matching for international games
-    // NCAA games should ONLY match via Step 1 (prospects already in the game)
     if (isInternationalGame) {
       for (const tracked of Object.values(trackedMap)) {
         if (usedPlayerIds.has(tracked.playerId)) continue; // Already added
@@ -628,30 +674,24 @@ export function decorateGamesWithTrackedPlayers(
         const trackedTeamLower = trackedTeam.toLowerCase();
         
         // Only match if the tracked player is also on an international team
-        // This prevents NCAA players from being matched to international games
         const trackedIsInternational = trackedTeamLower.includes('partizan') ||
                                       trackedTeamLower.includes('asvel') ||
                                       trackedTeamLower.includes('valencia') ||
                                       trackedTeamLower.includes('lyon') ||
                                       trackedTeamLower.includes('villeurbanne');
         
-        if (!trackedIsInternational) continue; // Skip NCAA players
-        
-        const playerNameLower = tracked.playerName.toLowerCase();
-        const isAdam = playerNameLower.includes('atamna');
+        if (!trackedIsInternational) continue;
         
         // Check if tracked player's team matches home team
         if (homeTeamName && trackedTeam && teamNamesMatch(homeTeamName, trackedTeam)) {
           homeTracked.push(tracked);
           usedPlayerIds.add(tracked.playerId);
-          if (isAdam) adamMatchCount++;
         }
         
         // Check if tracked player's team matches away team
         if (awayTeamName && trackedTeam && teamNamesMatch(awayTeamName, trackedTeam)) {
           awayTracked.push(tracked);
           usedPlayerIds.add(tracked.playerId);
-          if (isAdam) adamMatchCount++;
         }
       }
     }
@@ -668,6 +708,21 @@ export function decorateGamesWithTrackedPlayers(
           homeTrackedPlayers: homeTracked,
           awayTrackedPlayers: awayTracked,
         };
+        
+        // Debug logging for Norfolk State games (to debug Melo Baines issue)
+        const isNorfolkGame = homeTeamName.toLowerCase().includes('norfolk') || 
+                              awayTeamName.toLowerCase().includes('norfolk');
+        if (isNorfolkGame) {
+          console.log('[decorateGames] Norfolk State game result:', {
+            gameId: game.id,
+            home: homeTeamName,
+            away: awayTeamName,
+            homeTrackedCount: homeTracked.length,
+            awayTrackedCount: awayTracked.length,
+            homeTrackedPlayers: homeTracked.map(t => `${t.playerName} (${t.type})`),
+            awayTrackedPlayers: awayTracked.map(t => `${t.playerName} (${t.type})`),
+          });
+        }
         
         // Debug logging for problematic games
         if (isDebugGame(game)) {

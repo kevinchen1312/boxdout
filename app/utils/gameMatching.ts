@@ -38,5 +38,7 @@ export interface GameWithProspects extends Game {
   statusDetail?: string; // e.g., "Halftime", "9:54 - 2nd Half", "End of 1st"
   // ESPN game ID for fetching live details
   espnId?: string;
+  // Game key for merging (normalized team names, date, time, venue)
+  gameKey?: string;
 }
 

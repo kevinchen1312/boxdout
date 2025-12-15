@@ -114,7 +114,20 @@ async function convertRowToEntry(
     // Build game key
     // Include league info to prevent collision with teams having same name in different leagues
     const leagueIdentifier = (leagues && leagues.length > 0) ? leagues[0] : 'scraper';
-    const tipoffTime = `${dateKey}T${isoTime}`;
+    
+    // Convert ET time to full ISO timestamp for proper client-side sorting
+    // Create a date in ET timezone and convert to UTC ISO string
+    const etDateTimeStr = `${dateKey}T${isoTime}:00`;
+    // Parse as ET time and get UTC timestamp
+    // Use a fixed offset approach: ET is either -5 (EST) or -4 (EDT)
+    // For simplicity, we'll use -5 (EST) since most games are in winter
+    // More accurate approach would check DST, but this is good enough for sorting
+    const etOffsetMinutes = 5 * 60; // EST = UTC-5
+    const localDate = new Date(etDateTimeStr);
+    const utcTimestamp = localDate.getTime() + etOffsetMinutes * 60 * 1000;
+    const utcDate = new Date(utcTimestamp);
+    const tipoffTime = utcDate.toISOString(); // Full UTC ISO timestamp
+    
     const key = buildGameKey(dateKey, isoTime, homeTeamName, awayTeamName, row.venue, leagueIdentifier);
     
     // Look up team entries for logos

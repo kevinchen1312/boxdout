@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useUser } from '@clerk/nextjs';
-import { clearCacheByKey } from '../utils/browserCache';
+import { clearCacheByKey, getCachedData, setCachedData, getStaleCachedData } from '../utils/browserCache';
 import PageLayout from '../components/ui/PageLayout';
 import Button from '../components/ui/Button';
 import Card from '../components/ui/Card';
@@ -899,21 +899,47 @@ export default function RankingsPage() {
     [watchlistProspects]
   );
   
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // Start with loading until we determine the source
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [useMyBoard, setUseMyBoard] = useState(false);
+  const [sourceReady, setSourceReady] = useState(false); // Wait until we know the correct source
   const [showAddForm, setShowAddForm] = useState(false);
   const [fetchingGames, setFetchingGames] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [updating, setUpdating] = useState(false); // For background refresh indicator
+  const initialLoadDoneRef = useRef(false);
 
-  // Load toggle state from localStorage on mount
+  // Load toggle state from localStorage on mount AND load cached data immediately
+  // CRITICAL: Set sourceReady=true AFTER determining the correct source to prevent ESPN flash
   useEffect(() => {
     const saved = localStorage.getItem('useMyBoard');
-    if (saved === 'true') {
-      setUseMyBoard(true);
+    const shouldUseMyBoard = saved === 'true';
+    
+    // Set the correct source BEFORE setting sourceReady
+    setUseMyBoard(shouldUseMyBoard);
+    
+    // Try to load cached data immediately for instant display
+    const source = shouldUseMyBoard ? 'myboard' : 'espn';
+    const cacheKey = `rankings_${source}`;
+    const cachedRankings = getStaleCachedData<Prospect[]>(cacheKey);
+    
+    if (cachedRankings && cachedRankings.length > 0) {
+      console.log(`[Rankings] Using cached ${source} rankings: ${cachedRankings.length} prospects`);
+      setBigBoardProspects(cachedRankings);
+      setLoading(false); // Don't show loading if we have cached data
     }
+    
+    // Also load cached watchlist
+    const cachedWatchlist = getStaleCachedData<Prospect[]>('rankings_watchlist');
+    if (cachedWatchlist && cachedWatchlist.length > 0) {
+      console.log(`[Rankings] Using cached watchlist: ${cachedWatchlist.length} prospects`);
+      setWatchlistProspects(cachedWatchlist);
+    }
+    
+    // Now we're ready to load - source is correctly set
+    setSourceReady(true);
   }, []);
 
   const sensors = useSensors(
@@ -928,21 +954,52 @@ export default function RankingsPage() {
   );
 
   useEffect(() => {
+    // Don't load until we know the correct source (prevents ESPN flash when user is in myboard mode)
+    if (!sourceReady) {
+      console.log('[Rankings] Waiting for source to be determined...');
+      return;
+    }
+    
+    console.log(`[Rankings] Source ready, loading with useMyBoard=${useMyBoard}`);
     loadRankings();
     if (isSignedIn) {
       loadCustomPlayers();
       loadUserRankings();
     }
-  }, [isSignedIn, useMyBoard]); // Reload when useMyBoard changes
+  }, [isSignedIn, useMyBoard, sourceReady]); // Reload when useMyBoard changes, but only after sourceReady
 
   const loadRankings = async () => {
+    const source = useMyBoard ? 'myboard' : 'espn';
+    const cacheKey = `rankings_${source}`;
+    
+    console.log(`[Rankings] loadRankings called with source=${source}, useMyBoard=${useMyBoard}`);
+    
+    // Check if we already have data (from cache or previous load)
+    const hasExistingData = bigBoardProspects.length > 0;
+    
+    // INSTANT LOAD: Try to use cached data first
+    if (!hasExistingData) {
+      const cached = getCachedData<Prospect[]>(cacheKey) || getStaleCachedData<Prospect[]>(cacheKey);
+      if (cached && cached.length > 0) {
+        console.log(`[Rankings] INSTANT: Using cached ${source} rankings: ${cached.length} prospects, top 3:`, cached.slice(0, 3).map(p => p.name));
+        setBigBoardProspects(cached);
+        setLoading(false);
+        // Do background refresh
+        setUpdating(true);
+      } else {
+        console.log(`[Rankings] No cached data for ${source}, will fetch from API`);
+        setLoading(true);
+      }
+    } else {
+      console.log(`[Rankings] Already have ${bigBoardProspects.length} prospects, showing updating indicator`);
+      setUpdating(true); // Show subtle updating indicator
+    }
+    setError(null);
+    
     try {
-      setLoading(true);
-      setError(null);
       // Use the correct source based on useMyBoard state
       // Exclude watchlist players - they should only appear in the watchlist sidebar
-      const source = useMyBoard ? 'myboard' : 'espn';
-      const response = await fetch(`/api/rankings?source=${source}&excludeWatchlist=true`, {
+      const response = await fetch(`/api/my-rankings?source=${source}&excludeWatchlist=true`, {
         cache: 'no-store', // Ensure fresh data
       });
       
@@ -961,18 +1018,28 @@ export default function RankingsPage() {
       const loadedProspects = Array.isArray(data.prospects) ? data.prospects : [];
       // Ensure all prospects have an id field (use name as id for big board)
       // This id is used for React keys and local state, not database IDs
-      setBigBoardProspects(
-        loadedProspects.map((p: Prospect) => ({
-          ...p,
-          id: p.id || p.name, // Use name as id for ESPN prospects
-        }))
-      );
+      const processedProspects = loadedProspects.map((p: Prospect) => ({
+        ...p,
+        id: p.id || p.name, // Use name as id for ESPN prospects
+      }));
+      
+      console.log(`[Rankings] API returned ${source} rankings: ${processedProspects.length} prospects, top 3:`, processedProspects.slice(0, 3).map(p => p.name));
+      
+      setBigBoardProspects(processedProspects);
+      
+      // Cache the data for future visits (5 minute TTL)
+      setCachedData(cacheKey, processedProspects, 5 * 60 * 1000);
+      console.log(`[Rankings] Cached ${source} rankings: ${processedProspects.length} prospects`);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load rankings. Please try again.';
-      setError(errorMessage);
+      // Only show error if we have no data to display
+      if (bigBoardProspects.length === 0) {
+        setError(errorMessage);
+      }
       console.error('Error loading rankings:', err);
     } finally {
       setLoading(false);
+      setUpdating(false);
     }
   };
 
@@ -1049,13 +1116,21 @@ export default function RankingsPage() {
         const merged = [...dbProspects, ...localOnly];
         const result = merged.map((p, i) => ({ ...p, watchlistRank: i + 1 }));
         console.log('[loadUserRankings] Merged watchlist:', result.length, result.map(p => p.name));
+        
+        // Cache the watchlist for instant loading on next visit
+        setCachedData('rankings_watchlist', result, 5 * 60 * 1000);
+        
         return result;
       });
     } catch (err) {
       console.error('Error loading user rankings:', err);
       setUserRankings([]);
       setImportedProspects([]);
-      setWatchlistProspects([]);
+      // Only clear watchlist if we have no cached data
+      const cachedWatchlist = getStaleCachedData<Prospect[]>('rankings_watchlist');
+      if (!cachedWatchlist) {
+        setWatchlistProspects([]);
+      }
     }
   };
 
@@ -1121,6 +1196,15 @@ export default function RankingsPage() {
       // INSTANT REMOVAL: Dispatch event to remove player's games from cache
       if (typeof window !== 'undefined' && prospect) {
         const playerId = createCanonicalPlayerId(prospect.name, prospect.team || '', prospect.teamDisplay || '');
+        
+        // Store in localStorage for cross-page/cross-tab communication
+        localStorage.setItem('playerRemoved', JSON.stringify({
+          playerId,
+          playerName: prospect.name,
+          type: 'watchlist',
+          timestamp: Date.now()
+        }));
+        
         window.dispatchEvent(new CustomEvent('playerRemoved', {
           detail: { 
             playerId,
@@ -1281,6 +1365,15 @@ export default function RankingsPage() {
       // INSTANT REMOVAL: Dispatch event to remove player's games from cache
       if (typeof window !== 'undefined') {
         const playerId = createCanonicalPlayerId(prospect.name, prospect.team || '', prospect.teamDisplay || '');
+        
+        // Store in localStorage for cross-page/cross-tab communication
+        localStorage.setItem('playerRemoved', JSON.stringify({
+          playerId,
+          playerName: prospect.name,
+          type: 'bigBoard',
+          timestamp: Date.now()
+        }));
+        
         window.dispatchEvent(new CustomEvent('playerRemoved', {
           detail: { 
             playerId,
@@ -1317,7 +1410,10 @@ export default function RankingsPage() {
           })),
       };
 
-      const bigBoardResponse = await fetch('/api/rankings', {
+      console.log(`[handleSave] Saving ${bigBoardPayload.prospects.length} big board prospects, top 3:`, 
+        bigBoardPayload.prospects.slice(0, 3).map(p => `${p.rank}. ${p.name}`));
+
+      const bigBoardResponse = await fetch('/api/my-rankings', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1332,7 +1428,9 @@ export default function RankingsPage() {
       }
 
       // Save watchlist (only if user is signed in)
-      if (isSignedIn && watchlistProspects.length > 0) {
+      // CRITICAL: Always save watchlist to handle removals (e.g., moving to big board)
+      // Even if watchlist is now empty, we need to clear the old entries
+      if (isSignedIn) {
         const watchlistPayload = {
           watchlist: watchlistProspects
             .filter(Boolean)
@@ -1413,6 +1511,16 @@ export default function RankingsPage() {
       // Store rankings in localStorage for cross-route instant updates
       // Also dispatch event as backup
       if (typeof window !== 'undefined') {
+        // CRITICAL: Update the rankings page cache with the saved data
+        // This ensures returning to the rankings page shows the correct saved data
+        setCachedData('rankings_myboard', bigBoardProspects, 5 * 60 * 1000);
+        console.log('[handleSave] ✓ Updated rankings_myboard cache with saved data');
+        
+        // Also update watchlist cache if we have watchlist data
+        // Always update watchlist cache (even if empty, to clear old entries)
+        setCachedData('rankings_watchlist', watchlistProspects, 5 * 60 * 1000);
+        console.log('[handleSave] ✓ Updated rankings_watchlist cache:', watchlistProspects.length, 'prospects');
+        
         // Store in localStorage (works across routes/pages)
         try {
           localStorage.setItem('rankingsUpdated', JSON.stringify({
@@ -1427,10 +1535,6 @@ export default function RankingsPage() {
         
         // Also dispatch event (for same-page updates)
         console.log('[handleSave] Dispatching rankingsUpdated event with', updatedRankings.length, 'rankings');
-        const dashDaniels = updatedRankings.find(r => r.name.toLowerCase().includes('dash'));
-        if (dashDaniels) {
-          console.log('[handleSave] Dash Daniels in event:', dashDaniels);
-        }
         
         window.dispatchEvent(new CustomEvent('rankingsUpdated', {
           detail: { 
@@ -1458,7 +1562,7 @@ export default function RankingsPage() {
       setError(null);
       setSuccessMessage(null);
 
-      const response = await fetch('/api/rankings', {
+      const response = await fetch('/api/my-rankings', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1560,6 +1664,17 @@ export default function RankingsPage() {
             className="app-button-ghost"
             onClick={() => {
               const newValue = !useMyBoard;
+              
+              // Try to load cached data for the new source immediately
+              const newSource = newValue ? 'myboard' : 'espn';
+              const cacheKey = `rankings_${newSource}`;
+              const cachedData = getStaleCachedData<Prospect[]>(cacheKey);
+              
+              if (cachedData && cachedData.length > 0) {
+                console.log(`[Rankings] Instant switch to ${newSource} using cached data: ${cachedData.length} prospects`);
+                setBigBoardProspects(cachedData);
+              }
+              
               setUseMyBoard(newValue);
               localStorage.setItem('useMyBoard', String(newValue));
               setSuccessMessage(newValue ? 'Switched to My Board - showing only your imported players' : 'Switched to ESPN Rankings');

@@ -98,6 +98,8 @@ export const clearScheduleCache = (source?: RankingSource) => {
   }
   if (!source) {
     cacheTimestamp = null;
+    // Clear team ID cache when schedules are cleared
+    teamIdCache.clear();
   }
 };
 
@@ -388,7 +390,7 @@ export const sanitizeKey = (value: string): string =>
 // Also used for merge key generation to ensure consistency
 export const normalizeTeamNameForKey = (name: string): string => {
   let normalized = name
-    .replace(/\s+(spartans|bears|lions|tigers|wildcats|bulldogs|eagles|hawks|owls|panthers|warriors|knights|pirates|raiders|cougars|hornets|jayhawks|tar heels|blue devils|crimson tide|fighting irish)$/i, '')
+    .replace(/\s+(spartans|bears|lions|tigers|wildcats|bulldogs|eagles|hawks|owls|panthers|warriors|knights|pirates|raiders|cougars|hornets|jayhawks|tar heels|blue devils|crimson tide|fighting irish|wolverines|seminoles|crimson|tide|fighting|irish)$/i, '')
     .trim();
   
   // Normalize international team name variations
@@ -530,6 +532,80 @@ const fetchOverrideLogo = async (teamId: string): Promise<string | undefined> =>
   return undefined;
 };
 
+// Cache for team name -> team ID lookups to avoid repeated database queries
+const teamIdCache = new Map<string, string | undefined>();
+
+/**
+ * Looks up team ID from database by team name (for NCAA/NBL teams)
+ * This ensures games loaded from files can merge with games loaded from database
+ */
+async function lookupTeamIdFromDatabase(teamName: string): Promise<string | undefined> {
+  // Check cache first
+  const cacheKey = teamName.toLowerCase().trim();
+  if (teamIdCache.has(cacheKey)) {
+    return teamIdCache.get(cacheKey);
+  }
+  
+  try {
+    // Try to find team ID from ncaa_team_schedules or nbl_team_schedules
+    // Search by team name (home_team_name or away_team_name)
+    // Use DISTINCT ON to get unique team IDs
+    const normalizedName = normalizeTeamNameForKey(teamName);
+    
+    // Try NCAA first - get a unique team ID where the team name matches
+    const { data: ncaaGames } = await supabaseAdmin
+      .from('ncaa_team_schedules')
+      .select('home_team_id, away_team_id, home_team_name, away_team_name')
+      .or(`home_team_name.ilike.%${teamName}%,away_team_name.ilike.%${teamName}%`)
+      .limit(10); // Get a few games to find matching team ID
+    
+    if (ncaaGames && ncaaGames.length > 0) {
+      for (const game of ncaaGames) {
+        const homeNormalized = normalizeTeamNameForKey(game.home_team_name || '');
+        const awayNormalized = normalizeTeamNameForKey(game.away_team_name || '');
+        
+        if (homeNormalized === normalizedName && game.home_team_id) {
+          teamIdCache.set(cacheKey, game.home_team_id);
+          return game.home_team_id;
+        } else if (awayNormalized === normalizedName && game.away_team_id) {
+          teamIdCache.set(cacheKey, game.away_team_id);
+          return game.away_team_id;
+        }
+      }
+    }
+    
+    // Try NBL
+    const { data: nblGames } = await supabaseAdmin
+      .from('nbl_team_schedules')
+      .select('home_team_id, away_team_id, home_team_name, away_team_name')
+      .or(`home_team_name.ilike.%${teamName}%,away_team_name.ilike.%${teamName}%`)
+      .limit(10);
+    
+    if (nblGames && nblGames.length > 0) {
+      for (const game of nblGames) {
+        const homeNormalized = normalizeTeamNameForKey(game.home_team_name || '');
+        const awayNormalized = normalizeTeamNameForKey(game.away_team_name || '');
+        
+        if (homeNormalized === normalizedName && game.home_team_id) {
+          teamIdCache.set(cacheKey, game.home_team_id);
+          return game.home_team_id;
+        } else if (awayNormalized === normalizedName && game.away_team_id) {
+          teamIdCache.set(cacheKey, game.away_team_id);
+          return game.away_team_id;
+        }
+      }
+    }
+    
+    // Cache undefined result to avoid repeated queries
+    teamIdCache.set(cacheKey, undefined);
+    return undefined;
+  } catch (error) {
+    // Silently fail - this is a fallback lookup
+    teamIdCache.set(cacheKey, undefined);
+    return undefined;
+  }
+}
+
 export const createTeamInfo = async (displayName: string, teamEntry?: TeamDirectoryEntry): Promise<TeamInfo> => {
   try {
     // Check for international team logo first
@@ -549,6 +625,14 @@ export const createTeamInfo = async (displayName: string, teamEntry?: TeamDirect
       }
     }
     
+    // Determine team ID: use directory entry first, then try database lookup as fallback
+    let teamId = teamEntry?.id;
+    if (!teamId) {
+      // Try to look up team ID from database (for NCAA/NBL teams)
+      // This ensures games loaded from files can merge with games loaded from database
+      teamId = await lookupTeamIdFromDatabase(displayName);
+    }
+    
     // Debug logging (only in development)
     if (process.env.NODE_ENV === 'development') {
       if (internationalLogo) {
@@ -560,6 +644,9 @@ export const createTeamInfo = async (displayName: string, teamEntry?: TeamDirect
       if (!internationalLogo && !overrideLogo && !teamEntry?.logo) {
         console.log(`[Logo] No logo found for "${displayName}" (normalized: "${normalizedName}")`);
       }
+      if (!teamEntry?.id && teamId) {
+        console.log(`[TeamID] Found team ID from database for "${displayName}": ${teamId}`);
+      }
     }
     
     // Priority: overrideLogo > internationalLogo > teamEntry?.logo
@@ -570,16 +657,23 @@ export const createTeamInfo = async (displayName: string, teamEntry?: TeamDirect
       name: displayName,
       displayName,
       logo: finalLogo,
-      id: teamEntry?.id, // CRITICAL: Set team ID from directory entry
+      id: teamId, // Use team ID from directory OR database lookup
     };
   } catch (error) {
     // If anything fails, return team info without logo rather than throwing
     console.error(`[Logo] Error creating team info for ${displayName}:`, error);
+    
+    // Try database lookup even in error case
+    let teamId = teamEntry?.id;
+    if (!teamId) {
+      teamId = await lookupTeamIdFromDatabase(displayName);
+    }
+    
     return {
       name: displayName,
       displayName,
       logo: teamEntry?.logo,
-      id: teamEntry?.id, // CRITICAL: Set team ID from directory entry
+      id: teamId, // Use team ID from directory OR database lookup
     };
   }
 };
@@ -2300,9 +2394,11 @@ const loadInternationalRosterGames = async (
       return [];
     }
 
-    // Filter for international roster players (have international_team_id)
+    // Filter for international players (have international_team_id)
+    // Include both 'international-roster' and 'external' sources since external players
+    // may have international_team_id from backfill
     const internationalProspects = rankings.filter(
-      (r: any) => r.prospects?.international_team_id && r.prospects?.source === 'international-roster'
+      (r: any) => r.prospects?.international_team_id
     );
 
     if (internationalProspects.length === 0) {
@@ -2324,17 +2420,54 @@ const loadInternationalRosterGames = async (
     }
 
     // Create entries for each game
-    const entries: ParsedScheduleEntry[] = [];
-
+    // Group games by unique game key first to avoid duplicates
+    const gamesMap = new Map<string, { gameData: any; teamRankings: any[] }>();
+    
     for (const gameData of gamesData) {
-      // Find the prospect for this team
-      const ranking = internationalProspects.find(
+      // Find ALL prospects for this team (not just one)
+      const teamRankings = internationalProspects.filter(
         (r: any) => r.prospects.international_team_id === gameData.team_id
       );
       
-      if (!ranking) continue;
-
-      const prospectData: any = ranking.prospects;
+      if (teamRankings.length === 0) continue;
+      
+      // Build game key to group duplicate games
+      const gameDate = new Date(gameData.date);
+      const dateKey = gameDate.toISOString().split('T')[0];
+      const hours = gameDate.getUTCHours();
+      const minutes = gameDate.getUTCMinutes();
+      const isoTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
+      const sourceIdentifier = `intl-${gameData.league_id || 'unknown'}`;
+      const key = buildGameKey(
+        dateKey,
+        isoTime,
+        gameData.home_team_name,
+        gameData.away_team_name,
+        gameData.venue || undefined,
+        sourceIdentifier
+      );
+      
+      // Get or create game entry
+      const existing = gamesMap.get(key);
+      if (existing) {
+        // Merge team rankings (add any new prospects for this team)
+        for (const ranking of teamRankings) {
+          if (!existing.teamRankings.some((r: any) => r.prospects.id === ranking.prospects.id)) {
+            existing.teamRankings.push(ranking);
+          }
+        }
+      } else {
+        gamesMap.set(key, { gameData, teamRankings });
+      }
+    }
+    
+    // Now create entries for each unique game with all prospects
+    const entries: ParsedScheduleEntry[] = [];
+    
+    for (const { gameData, teamRankings } of gamesMap.values()) {
+      // Create an entry for each prospect on this team
+      for (const ranking of teamRankings) {
+        const prospectData: any = ranking.prospects;
       
       // Find the prospect by matching name and team (flexible matching)
       let prospect: Prospect | undefined;
@@ -2356,22 +2489,23 @@ const loadInternationalRosterGames = async (
         continue;
       }
 
-      // Parse date
+      // Parse date (reuse from gameData)
       const gameDate = new Date(gameData.date);
       const dateKey = gameDate.toISOString().split('T')[0]; // YYYY-MM-DD format
 
       // Parse time for sortTimestamp
-      let sortTimestamp: number | null = null;
-      let isoTime = '00:00:00';
       const hours = gameDate.getUTCHours();
       const minutes = gameDate.getUTCMinutes();
-      sortTimestamp = hours * 60 + minutes;
-      isoTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
+      const sortTimestamp = hours * 60 + minutes;
+      const isoTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
 
-      // Determine prospect side
-      const prospectSide: 'home' | 'away' = gameData.location_type === 'home' ? 'home' : 'away';
+      // Determine prospect side by checking which team ID matches
+      // gameData.team_id is the team this schedule entry is for
+      const isHome = gameData.home_team_id === gameData.team_id;
+      const isAway = gameData.away_team_id === gameData.team_id;
+      const prospectSide: 'home' | 'away' = isHome ? 'home' : (isAway ? 'away' : (gameData.location_type === 'home' ? 'home' : 'away'));
 
-      // Build game key (same format as other games)
+      // Build game key (same format as other games) - reuse the key from grouping
       const sourceIdentifier = `intl-${gameData.league_id || 'unknown'}`;
       const key = buildGameKey(
         dateKey,
@@ -2385,17 +2519,25 @@ const loadInternationalRosterGames = async (
       // Create game object
       const prospectId = `${prospect.name}|${prospect.team}`;
       
+      // Use full ISO timestamp for proper timezone-aware sorting on client
+      // gameData.date from DB is already in UTC format (e.g., "2025-12-13T16:00:00+00:00")
+      const fullISODate = gameDate.toISOString(); // Converts to UTC ISO string
+      
+      // Format tipoff in ET timezone for consistency with NCAA games
+      const tipoffInET = gameDate.toLocaleTimeString('en-US', { 
+        hour: 'numeric', 
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'America/New_York'
+      }) + ' ET';
+      
       const game: AggregatedGameInternal = {
         id: gameData.game_id,
         key,
-        date: dateKey,
+        date: fullISODate, // Full ISO timestamp for client-side sorting
         time: isoTime,
         sortTimestamp,
-        tipoff: gameDate.toLocaleTimeString('en-US', { 
-          hour: 'numeric', 
-          minute: '2-digit',
-          hour12: true 
-        }),
+        tipoff: tipoffInET, // Tipoff in ET for consistency with NCAA games
         homeTeam: {
           id: String(gameData.home_team_id),
           name: gameData.home_team_name,
@@ -2431,9 +2573,10 @@ const loadInternationalRosterGames = async (
         prospect,
         prospectSide,
       });
+      }
     }
 
-    console.log(`[loadInternationalRosterGames] Loaded ${entries.length} games for ${internationalProspects.length} international roster players`);
+    console.log(`[loadInternationalRosterGames] Loaded ${entries.length} games for ${internationalProspects.length} international players`);
     return entries;
   } catch (error) {
     console.error('[loadInternationalRosterGames] Error loading games:', error);
@@ -3881,11 +4024,117 @@ const buildSchedules = async (
   // Enrich games with prospects from opposing teams that are on the board/watchlist
   console.time('[Schedule] enrichGamesWithOpposingProspects');
   
-  // Helper function to find prospects matching a team name
-  const findProspectsForTeam = (teamName: string, prospectsByRank: Map<number, Prospect>): Prospect[] => {
+  // School qualifiers that indicate DIFFERENT schools (not mascots)
+  // Used to prevent "Alabama" matching "Alabama State", "Kentucky" matching "Kentucky Christian", etc.
+  const SCHOOL_QUALIFIERS = ['state', 'tech', 'christian', 'am', 'southern', 'northern', 'eastern', 'western', 'central', 'atlantic', 'pacific', 'international', 'methodist', 'baptist', 'lutheran', 'coastal', 'poly'];
+  
+  // Helper function to check if two team names match strictly
+  // Returns false if one appears to be a different school (e.g., "Alabama" vs "Alabama State")
+  const isStrictTeamMatch = (teamKey1: string, teamKey2: string): boolean => {
+    if (!teamKey1 || !teamKey2) return false;
+    if (teamKey1 === teamKey2) return true;
+    if (teamKey1.length < 5 || teamKey2.length < 5) return false;
+    
+    let shorter = '', longer = '';
+    if (teamKey1.startsWith(teamKey2)) {
+      shorter = teamKey2;
+      longer = teamKey1;
+    } else if (teamKey2.startsWith(teamKey1)) {
+      shorter = teamKey1;
+      longer = teamKey2;
+    } else {
+      return false;
+    }
+    
+    const suffix = longer.substring(shorter.length);
+    // If suffix starts with a school qualifier, it's a DIFFERENT school
+    return !SCHOOL_QUALIFIERS.some(q => suffix.startsWith(q));
+  };
+  
+  // Helper function to find prospects matching a team
+  // CRITICAL: Uses team ID matching first to prevent "Texas" matching "Texas Tech" etc.
+  // CRITICAL: isNBLGame parameter prevents NBL team IDs from matching NCAA team IDs (they can collide - e.g., ID 8 is both Arkansas and South East Melbourne Phoenix)
+  const findProspectsForTeam = (teamName: string, prospectsByRank: Map<number, Prospect>, teamId?: string, isNBLGame: boolean = false): Prospect[] => {
     const normalizedTeamName = normalizeTeamNameForKey(teamName);
     const normalizedTeamKey = sanitizeKey(normalizedTeamName);
     const matchingProspects: Prospect[] = [];
+    const matchedProspectIds = new Set<string>(); // Track matched prospects to avoid duplicates
+    
+    // Debug logging for Alabama-related games
+    const isAlabamaGame = teamName.toLowerCase().includes('alabama');
+    if (isAlabamaGame) {
+      console.log(`\n[findProspectsForTeam] ======== ALABAMA DEBUG ========`);
+      console.log(`[findProspectsForTeam] Looking for: team="${teamName}" teamId="${teamId || 'UNDEFINED'}" isNBLGame=${isNBLGame}`);
+      console.log(`[findProspectsForTeam] Total prospects: ${prospectsByRank.size}`);
+      // Log all prospects with Alabama in their team name
+      let foundPhilon = false;
+      for (const prospect of prospectsByRank.values()) {
+        if (prospect.name?.toLowerCase().includes('philon')) {
+          foundPhilon = true;
+          console.log(`[findProspectsForTeam] PHILON FOUND: name="${prospect.name}" team="${prospect.team}" teamId="${prospect.teamId || 'UNDEFINED'}"`);
+        }
+        if (prospect.team?.toLowerCase().includes('alabama')) {
+          console.log(`[findProspectsForTeam] Alabama prospect: ${prospect.name} - team="${prospect.team}" teamId="${prospect.teamId || 'UNDEFINED'}"`);
+        }
+      }
+      if (!foundPhilon) {
+        console.log(`[findProspectsForTeam] WARNING: Philon NOT FOUND in prospects list!`);
+      }
+      console.log(`[findProspectsForTeam] ==============================\n`);
+    }
+    
+    // PRIORITY 1: Match by team ID (most reliable - no name confusion possible)
+    // CRITICAL: Only match by team ID if the prospect source matches the game type
+    // NBL and NCAA share the same ID namespace (e.g., ID 8 = Arkansas in NCAA, South East Melbourne in NBL)
+    if (teamId) {
+      const teamIdStr = String(teamId);
+      if (isAlabamaGame) {
+        console.log(`[findProspectsForTeam] DEBUG: Checking team ID matching. Game teamId="${teamIdStr}" isNBLGame=${isNBLGame}`);
+      }
+      for (const prospect of prospectsByRank.values()) {
+        if (prospect.source === 'international-roster') continue;
+        
+        // CRITICAL: Check if prospect is from the correct league context
+        // NBL games should only match NBL prospects, NCAA games should only match NCAA prospects
+        const prospectTeamName = (prospect.team || prospect.teamDisplay || '').toLowerCase();
+        const isNBLProspect = prospectTeamName.includes('melbourne') || 
+                              prospectTeamName.includes('breakers') ||
+                              prospectTeamName.includes('new zealand') ||
+                              prospectTeamName.includes('adelaide') ||
+                              prospectTeamName.includes('brisbane') ||
+                              prospectTeamName.includes('cairns') ||
+                              prospectTeamName.includes('illawarra') ||
+                              prospectTeamName.includes('perth') ||
+                              prospectTeamName.includes('phoenix') ||
+                              prospectTeamName.includes('sydney') ||
+                              prospectTeamName.includes('tasmania');
+        
+        // Skip if league context doesn't match (prevents Arkansas matching South East Melbourne Phoenix)
+        if (isNBLGame && !isNBLProspect) continue;
+        if (!isNBLGame && isNBLProspect) continue;
+        
+        if (prospect.teamId && String(prospect.teamId) === teamIdStr) {
+          const prospectKey = `${prospect.name}|${prospect.team}`;
+          if (!matchedProspectIds.has(prospectKey)) {
+            matchingProspects.push(prospect);
+            matchedProspectIds.add(prospectKey);
+            console.log(`[findProspectsForTeam] ✅ Team ID match: ${prospect.name} (teamId: ${prospect.teamId}) → ${teamName} (teamId: ${teamId})`);
+          }
+        }
+      }
+      
+      // If we found matches by team ID, return them (don't risk false positives from name matching)
+      if (matchingProspects.length > 0) {
+        console.log(`[findProspectsForTeam] Found ${matchingProspects.length} prospects by team ID for ${teamName} (${teamId})`);
+        return matchingProspects;
+      }
+      
+      if (isAlabamaGame) {
+        console.log(`[findProspectsForTeam] DEBUG: No team ID matches found for ${teamName} (${teamId}), falling through to name matching`);
+      }
+    } else if (isAlabamaGame) {
+      console.log(`[findProspectsForTeam] DEBUG: No teamId provided for game team "${teamName}", will use name matching only`);
+    }
     
     // Known team name variations mapping
     const teamVariations: Record<string, string[]> = {
@@ -3953,8 +4202,8 @@ const buildSchedules = async (
         
         // Check exact match
         if (normalizedProspectKey === normalizedTeamKey) {
-          if (isDebugTeam) {
-            console.log(`[findProspectsForTeam]     ✅ EXACT MATCH`);
+          if (isDebugTeam || isAlabamaGame) {
+            console.log(`[findProspectsForTeam]     ✅ EXACT MATCH: ${prospect.name} (${normalizedProspectKey}) → ${teamName} (${normalizedTeamKey})`);
           }
           matchingProspects.push(prospect);
           break;
@@ -3973,9 +4222,10 @@ const buildSchedules = async (
         
         // For international teams, try matching the base key first (e.g., "valencia" matches "valenciabasketclub")
         // This is more lenient and catches cases where team names have different suffixes
-        if (hasKnownVariations && prospectBaseKey === teamBaseKey) {
+        // BUT NOT for school qualifier differences like "Alabama" vs "Alabama State"
+        if (hasKnownVariations && isStrictTeamMatch(prospectBaseKey, teamBaseKey)) {
           if (isDebugTeam) {
-            console.log(`[findProspectsForTeam]     ✅ BASE KEY MATCH (${prospectBaseKey} === ${teamBaseKey})`);
+            console.log(`[findProspectsForTeam]     ✅ BASE KEY MATCH (${prospectBaseKey} matches ${teamBaseKey})`);
           }
           matchingProspects.push(prospect);
           break;
@@ -4001,11 +4251,12 @@ const buildSchedules = async (
         
         // For international teams with known variations, try a more lenient match
         // Check if the base key matches (e.g., "valencia" should match "valenciabasketclub")
+        // BUT NOT for school qualifier differences like "Alabama" vs "Alabama State"
         if (hasKnownVariations) {
           const teamBaseKey = normalizedTeamKey.split('-')[0];
-          if (prospectBaseKey === teamBaseKey) {
+          if (isStrictTeamMatch(prospectBaseKey, teamBaseKey)) {
             if (isDebugTeam) {
-              console.log(`[findProspectsForTeam]     ✅ BASE KEY MATCH (${prospectBaseKey} === ${teamBaseKey})`);
+              console.log(`[findProspectsForTeam]     ✅ BASE KEY MATCH (${prospectBaseKey} matches ${teamBaseKey})`);
             }
             matchingProspects.push(prospect);
             break;
@@ -4055,6 +4306,24 @@ const buildSchedules = async (
       seen.add(p.rank);
       return true;
     });
+  };
+  
+  // Helper to check if a game is an NBL (Australian) game
+  // CRITICAL: NBL and NCAA share the same team ID namespace (e.g., ID 8 = Arkansas in NCAA, South East Melbourne in NBL)
+  const isNBLGame = (game: AggregatedGameInternal): boolean => {
+    const homeName = (game.homeTeam.displayName || game.homeTeam.name || '').toLowerCase();
+    const awayName = (game.awayTeam.displayName || game.awayTeam.name || '').toLowerCase();
+    
+    // NBL team indicators
+    const nblTeams = [
+      'melbourne united', 'new zealand breakers', 'adelaide 36ers', 'brisbane bullets',
+      'cairns taipans', 'illawarra hawks', 'perth wildcats', 'south east melbourne',
+      'sydney kings', 'tasmania jackjumpers', 'phoenix', '36ers', 'taipans', 'breakers'
+    ];
+    
+    return nblTeams.some(team => 
+      homeName.includes(team) || awayName.includes(team)
+    );
   };
   
   // Helper to check if a game is an international/pro game (not NCAA)
@@ -4112,6 +4381,7 @@ const buildSchedules = async (
     const normalizedHomeTeamName = normalizeTeamNameForKey(homeTeamName);
     const normalizedAwayTeamName = normalizeTeamNameForKey(awayTeamName);
     const isInternational = isInternationalGame(game);
+    const gameIsNBL = isNBLGame(game);
     
     // Debug logging for specific matchups
     const isValenciaLyon = (homeTeamName.toLowerCase().includes('valencia') && (awayTeamName.toLowerCase().includes('lyon') || awayTeamName.toLowerCase().includes('asvel'))) ||
@@ -4124,25 +4394,26 @@ const buildSchedules = async (
       console.log(`[Enrichment]   Is international game: ${isInternational}`);
     }
     
-    // Debug logging disabled by default for performance (enable only when debugging)
-    const DEBUG_ENRICHMENT = false;
+    // Debug logging for Alabama games to trace team ID matching issues
+    const DEBUG_ENRICHMENT = true;
     const isDebugGame = DEBUG_ENRICHMENT && (
-      homeTeamName.toLowerCase().includes('michigan') || 
-      awayTeamName.toLowerCase().includes('michigan') ||
-      homeTeamName.toLowerCase().includes('kansas') ||
-      awayTeamName.toLowerCase().includes('kansas') ||
-      homeTeamName.toLowerCase().includes('arkansas') ||
-      awayTeamName.toLowerCase().includes('arkansas')
+      homeTeamName.toLowerCase().includes('alabama') || 
+      awayTeamName.toLowerCase().includes('alabama') ||
+      homeTeamName.toLowerCase().includes('texas') ||
+      awayTeamName.toLowerCase().includes('texas')
     );
     
     if (isDebugGame) {
       console.log(`[Enrichment] 🔍 Enriching game: ${awayTeamName} @ ${homeTeamName}`);
-      console.log(`[Enrichment]   Home team: "${homeTeamName}"`);
-      console.log(`[Enrichment]   Away team: "${awayTeamName}"`);
+      console.log(`[Enrichment]   Home team: "${homeTeamName}" (id: ${game.homeTeam.id})`);
+      console.log(`[Enrichment]   Away team: "${awayTeamName}" (id: ${game.awayTeam.id})`);
     }
     
-    // Find prospects for home team (use normalized name for better matching)
-    const homeTeamProspects = findProspectsForTeam(normalizedHomeTeamName || homeTeamName, prospectsByRank);
+    // Find prospects for home team - uses team ID for accurate matching
+    // Team ID prevents "Texas" from matching "Texas Tech" or "Texas A&M"
+    // CRITICAL: Pass gameIsNBL to prevent NBL team IDs from matching NCAA team IDs (they share the same ID namespace)
+    const homeTeamId = game.homeTeam.id ? String(game.homeTeam.id) : undefined;
+    const homeTeamProspects = findProspectsForTeam(normalizedHomeTeamName || homeTeamName, prospectsByRank, homeTeamId, gameIsNBL);
     
     
     // Filter out college prospects from international games
@@ -4183,8 +4454,10 @@ const buildSchedules = async (
       }
     }
     
-    // Find prospects for away team (use normalized name for better matching)
-    const awayTeamProspects = findProspectsForTeam(normalizedAwayTeamName || awayTeamName, prospectsByRank);
+    // Find prospects for away team - uses team ID for accurate matching
+    // CRITICAL: Pass gameIsNBL to prevent NBL team IDs from matching NCAA team IDs (they share the same ID namespace)
+    const awayTeamId = game.awayTeam.id ? String(game.awayTeam.id) : undefined;
+    const awayTeamProspects = findProspectsForTeam(normalizedAwayTeamName || awayTeamName, prospectsByRank, awayTeamId, gameIsNBL);
     
     
     // Filter out college prospects from international games
@@ -4665,12 +4938,13 @@ export const loadAllSchedules = async (
     clearScheduleCache(source);
   }
   
-  // Use cache if available (even for myboard with custom players - the cache is per-source, not per-user)
-  // The custom players/watchlist are loaded dynamically, so cached games are still valid
-  if (cachedSchedules[source] && !forceReload) {
-    // For myboard with custom players, we still return cached games
-    // Custom players/watchlist are merged in loadProspects, which happens during buildSchedules
-    // But since we're caching the final gamesByDate, we can reuse it
+  // CRITICAL: Don't use cache if user is logged in (clerkUserId provided)
+  // Cached schedules include user-specific watchlist data from previous user
+  // This caused the bug where only one user's watchlist games were shown
+  const shouldUseCache = cachedSchedules[source] && !forceReload && !clerkUserId;
+  
+  if (shouldUseCache) {
+    console.log(`[Schedule] Using cached schedules for ${source} (no user)`);
     return cachedSchedules[source]!;
   }
 

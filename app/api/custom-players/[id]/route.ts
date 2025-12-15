@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // PUT /api/custom-players/[id] - Update a custom player
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { userId } = await auth();
@@ -19,7 +19,8 @@ export async function PUT(
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    const playerId = params.id;
+    const { id } = await params;
+    const playerId = id;
     const body = await request.json();
     const { name, position, team, rank, height, class: playerClass, jersey, team_id } = body;
 
@@ -71,7 +72,7 @@ export async function PUT(
 // DELETE /api/custom-players/[id] - Delete a custom player
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { userId } = await auth();
@@ -85,7 +86,8 @@ export async function DELETE(
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    const playerId = params.id;
+    const { id } = await params;
+    const playerId = id;
 
     // Verify the player belongs to the user
     const { data: existingPlayer, error: checkError } = await supabaseAdmin

@@ -13,7 +13,8 @@ interface ExternalProspectResult {
   existingProspectId?: string | null;
   alreadyOnBoard?: boolean;
   source?: 'espn' | 'international'; // Track the source
-  teamId?: number; // For international players
+  teamId?: number; // API Basketball team ID for international players
+  internationalTeamId?: string | null; // Database UUID for linking to international_teams
   jerseyNumber?: string; // For international players
   country?: string; // For international players
   age?: number; // For international players
@@ -84,6 +85,7 @@ export default function SearchImportPlayer({ onPlayerImported, existingRankings 
             league: r.league || (source === 'espn' ? 'NCAA' : 'International'),
             source,
             teamId: r.teamId,
+            internationalTeamId: r.internationalTeamId, // Database UUID for linking
             existingProspectId: r.source === 'watchlist' ? r.id : null,
             alreadyOnBoard: r.source === 'watchlist',
           };
@@ -134,7 +136,8 @@ export default function SearchImportPlayer({ onPlayerImported, existingRankings 
           team: player.team,
           league: player.league,
           provider: player.source === 'international' ? 'api-basketball' : 'espn',
-          teamId: player.teamId, // For international players
+          teamId: player.teamId, // API Basketball team ID for international players
+          internationalTeamId: player.internationalTeamId, // Database UUID for linking to international_teams
           jerseyNumber: player.jerseyNumber, // For international players
           country: player.country, // For international players
           age: player.age, // For international players

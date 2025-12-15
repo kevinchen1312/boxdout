@@ -39,20 +39,37 @@ export async function GET(request: NextRequest) {
       // Continue without user ID - we can still search college and international players
     }
 
-    // Run all searches in parallel
-    const [internationalResults, collegeResults, watchlistResults] = await Promise.all([
+    // Run all searches in parallel with timeout protection
+    // Use Promise.allSettled to ensure one slow query doesn't block others
+    const searchPromises = [
       // 1. Search international players (player_team_mappings)
       searchInternationalPlayers(q),
       
       // 2. Search college players (prospects with source='espn')
       searchCollegePlayers(q),
       
-      // 3. Search watchlist players (user_rankings with source='external')
+      // 3. Search all ESPN players (espn_players table - comprehensive NCAA/NBL roster)
+      searchESPNPlayers(q),
+      
+      // 4. Search watchlist players (user_rankings with source='external')
       supabaseUserId ? searchWatchlistPlayers(q, supabaseUserId) : Promise.resolve([]),
+    ];
+    
+    // Add overall timeout (10 seconds) to prevent hanging
+    const timeoutPromise = new Promise<UnifiedPlayerSearchResult[][]>((resolve) => {
+      setTimeout(() => {
+        console.warn('[search-all] Search timeout after 10 seconds, returning partial results');
+        resolve([[], [], [], []]); // Return empty arrays for timed-out searches
+      }, 10000);
+    });
+    
+    const [internationalResults, collegeResults, espnPlayersResults, watchlistResults] = await Promise.race([
+      Promise.all(searchPromises),
+      timeoutPromise,
     ]);
 
     // Merge results and deduplicate by name
-    const allResults = [...internationalResults, ...collegeResults, ...watchlistResults];
+    const allResults = [...internationalResults, ...collegeResults, ...espnPlayersResults, ...watchlistResults];
     
     // Deduplicate by name (case-insensitive) - keep the best result
     const uniqueResults = deduplicateResults(allResults);
@@ -170,6 +187,100 @@ async function searchCollegePlayers(query: string): Promise<UnifiedPlayerSearchR
     }));
   } catch (error) {
     console.error('[search-all] Error searching college players:', error);
+    return [];
+  }
+}
+
+/**
+ * Search all ESPN players from espn_players table (comprehensive NCAA/NBL roster)
+ */
+async function searchESPNPlayers(query: string): Promise<UnifiedPlayerSearchResult[]> {
+  try {
+    // Use word-by-word matching for better search results
+    const queryWords = query.trim().split(/\s+/).filter(Boolean);
+    const searchPattern = queryWords.map(word => `%${word}%`).join('');
+    
+    const { data, error } = await supabaseAdmin
+      .from('espn_players')
+      .select('espn_player_id, espn_team_id, full_name, position, jersey_number, league')
+      .ilike('full_name', searchPattern)
+      .limit(50);
+
+    if (error) {
+      console.error('[search-all] Error searching ESPN players:', error);
+      return [];
+    }
+
+    if (!data || data.length === 0) {
+      return [];
+    }
+
+    // Get unique team IDs to fetch team names
+    const teamIds = [...new Set(data.map(p => p.espn_team_id))];
+    
+    // Fetch team names from ncaa_team_schedules or nbl_team_schedules
+    // Use DISTINCT ON to get unique team names quickly, with timeout protection
+    const teamNamesMap = new Map<string, string>();
+    
+    if (teamIds.length > 0) {
+      try {
+        // Fetch team names with timeout protection (3 seconds per query)
+        const ncaaPromise = supabaseAdmin
+          .from('ncaa_team_schedules')
+          .select('espn_team_id, home_team_display_name')
+          .in('espn_team_id', teamIds)
+          .limit(50); // Reduced limit for faster queries
+        
+        const nblPromise = supabaseAdmin
+          .from('nbl_team_schedules')
+          .select('espn_team_id, home_team_display_name')
+          .in('espn_team_id', teamIds)
+          .limit(50); // Reduced limit for faster queries
+        
+        // Race queries against timeout - if timeout wins, use empty result
+        const timeoutMs = 3000;
+        const timeoutPromise = new Promise<{ data: null }>((resolve) => {
+          setTimeout(() => resolve({ data: null }), timeoutMs);
+        });
+        
+        const [ncaaResult, nblResult] = await Promise.all([
+          Promise.race([ncaaPromise, timeoutPromise]).catch(() => ({ data: null })),
+          Promise.race([nblPromise, timeoutPromise]).catch(() => ({ data: null })),
+        ]);
+        
+        if (ncaaResult && !('error' in ncaaResult) && ncaaResult.data) {
+          ncaaResult.data.forEach((game: any) => {
+            if (game.espn_team_id && game.home_team_display_name && !teamNamesMap.has(game.espn_team_id)) {
+              teamNamesMap.set(game.espn_team_id, game.home_team_display_name);
+            }
+          });
+        }
+        
+        if (nblResult && !('error' in nblResult) && nblResult.data) {
+          nblResult.data.forEach((game: any) => {
+            if (game.espn_team_id && game.home_team_display_name && !teamNamesMap.has(game.espn_team_id)) {
+              teamNamesMap.set(game.espn_team_id, game.home_team_display_name);
+            }
+          });
+        }
+      } catch (error) {
+        console.warn('[search-all] Error fetching team names (non-fatal):', error);
+        // Continue without team names - search will still work
+      }
+    }
+
+    return data.map(player => ({
+      id: `espn-player-${player.espn_player_id}-${player.espn_team_id}`, // Unique ID for this player-team combo
+      name: player.full_name,
+      team: teamNamesMap.get(player.espn_team_id) || null,
+      teamId: player.espn_team_id, // ESPN team ID as string
+      position: player.position,
+      league: player.league === 'ncaa' ? 'NCAA' : player.league === 'nbl' ? 'NBL' : player.league || null,
+      source: 'college' as const, // Use 'college' source for consistency
+      logoUrl: null,
+    }));
+  } catch (error) {
+    console.error('[search-all] Error searching ESPN players:', error);
     return [];
   }
 }

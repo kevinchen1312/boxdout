@@ -33,8 +33,8 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       console.error('custom-players query error', error);
-      // If table doesn't exist, return empty array instead of error
-      if (error.code === '42P01' || error.message?.includes('does not exist')) {
+      // If table doesn't exist (PGRST205) or schema cache issue, return empty array instead of error
+      if (error.code === '42P01' || error.code === 'PGRST205' || error.message?.includes('does not exist') || error.message?.includes('schema cache')) {
         console.warn('custom_players table does not exist yet, returning empty array');
         return NextResponse.json({ players: [] });
       }

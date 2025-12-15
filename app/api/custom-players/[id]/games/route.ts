@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // GET /api/custom-players/[id]/games - Get games for a specific custom player
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { userId } = await auth();
@@ -19,7 +19,8 @@ export async function GET(
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    const playerId = params.id;
+    const { id } = await params;
+    const playerId = id;
 
     // Verify the player belongs to the user
     const { data: existingPlayer, error: checkError } = await supabaseAdmin

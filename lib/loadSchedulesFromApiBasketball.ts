@@ -399,17 +399,26 @@ async function convertApiBasketballGameToEntry(
     const [gameHours, gameMinutes] = gameTimeStr.split(':').map(Number);
     const isoTime = `${gameHours.toString().padStart(2, '0')}:${gameMinutes.toString().padStart(2, '0')}`;
     
-    // Format time in user's local timezone for display (no timezone label)
-    const userLocalDateTime = new Date(gameDateTimeUTC);
+    // Use full ISO timestamp for proper client-side sorting
+    const fullISODate = gameDateTimeUTC.toISOString(); // UTC ISO string for sorting
+    
+    // Format tipoff in ET timezone for consistency with NCAA games
     const timeStrFormatted = new Intl.DateTimeFormat('en-US', {
       hour: 'numeric',
       minute: '2-digit',
       hour12: true,
-    }).format(userLocalDateTime);
+      timeZone: 'America/New_York',
+    }).format(gameDateTimeUTC) + ' ET';
     
-    // Get user's local hours/minutes for sorting (sort by when user sees the game)
-    const hours = userLocalDateTime.getHours();
-    const minutes = userLocalDateTime.getMinutes();
+    // Get ET hours/minutes for sorting (consistent with NCAA games)
+    const etTimeStr = new Intl.DateTimeFormat('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      hourCycle: 'h23',
+      timeZone: 'America/New_York',
+    }).format(gameDateTimeUTC);
+    const [hours, minutes] = etTimeStr.split(':').map(Number);
     const sortTimestamp = hours * 60 + minutes;
     
     // Get team names, IDs, and logos from API response
@@ -507,7 +516,8 @@ async function convertApiBasketballGameToEntry(
     // Build game key (use display names for consistency)
     // Include league info to prevent merging games from different leagues (e.g., Partizan EuroLeague vs Partizan NBL)
     const leagueInfo = apiGame.league?.name || apiGame.league?.id?.toString() || 'api-basketball';
-    const tipoffTime = `${dateKey}T${isoTime}`;
+    // Use full ISO timestamp for the date field (for client-side sorting)
+    const tipoffTime = fullISODate;
     const key = buildGameKey(dateKey, isoTime, simplifiedHomeTeam, simplifiedAwayTeam, apiGame.venue, leagueInfo);
     
     if (isValenciaJoventut || isValenciaLyon || isValenciaParis) {

@@ -6,7 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 // POST /api/custom-players/[id]/fetch-games - Trigger game fetching for a player
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { userId } = await auth();
@@ -20,7 +20,7 @@ export async function POST(
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    const playerId = params.id;
+    const { id: playerId } = await params;
 
     // Verify the player belongs to the user
     const { data: player, error: checkError } = await supabaseAdmin

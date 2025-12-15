@@ -248,23 +248,41 @@ export const convertNBLEventToScheduleEntry = async (
     }
   }
   
-  // Format time in user's local timezone (NBL times come as UTC)
+  // NBL times come as UTC from ESPN API
   const eventDate = new Date(event.date);
   
-  // Convert to local timezone and get the date (game might be on different date locally)
-  const dateKey = format(eventDate, 'yyyy-MM-dd');
+  // Use full ISO timestamp for proper timezone-aware sorting on client
+  const fullISODate = eventDate.toISOString(); // UTC ISO string (e.g., "2025-12-14T03:30:00.000Z")
   
-  // Format time in user's local timezone (no timezone label)
+  // Get date key in ET timezone (for grouping games by day in ET)
+  const dateKey = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(eventDate); // Returns YYYY-MM-DD in ET
+  
+  // Format tipoff in ET timezone for consistency with NCAA games
   const timeStr = new Intl.DateTimeFormat('en-US', {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
+    timeZone: 'America/New_York',
+  }).format(eventDate) + ' ET';
+  
+  // Get time components in ET for sorting
+  const etTimeStr = new Intl.DateTimeFormat('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+    timeZone: 'America/New_York',
   }).format(eventDate);
+  const isoTime = etTimeStr;
   
-  const isoTime = format(eventDate, 'HH:mm:ss');
-  
-  // Calculate sort timestamp using local time
-  const sortTimestamp = eventDate.getHours() * 60 + eventDate.getMinutes();
+  // Calculate sort timestamp using ET time
+  const [etHours, etMinutes] = etTimeStr.split(':').map(Number);
+  const sortTimestamp = etHours * 60 + etMinutes;
   
   // Get TV/broadcast info
   const broadcasts = competition.broadcasts || [];
@@ -303,7 +321,8 @@ export const convertNBLEventToScheduleEntry = async (
   }
   
   // Build game key
-  const tipoffTime = `${dateKey}T${isoTime}`;
+  // Use full ISO timestamp for the date field (for client-side sorting)
+  const tipoffTime = fullISODate;
   const timeKey = sortTimestamp === Number.MAX_SAFE_INTEGER ? 'TBD' : isoTime;
   // NBL (Australian) games - use 'nbl' as league identifier to prevent collision with international teams
   const key = buildGameKey(dateKey, timeKey, homeTeamName, awayTeamName, venue, 'nbl');

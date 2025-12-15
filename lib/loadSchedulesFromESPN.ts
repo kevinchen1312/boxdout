@@ -438,7 +438,10 @@ export const convertESPNEventToScheduleEntry = async (
   }
   
   // Build game key
-  const tipoffTime = `${dateKey}T${isoTime}`;
+  // Use full ISO timestamp for proper client-side sorting
+  // event.date from ESPN is already in UTC format (e.g., "2025-12-13T17:00:00Z")
+  const eventDate = new Date(event.date);
+  const tipoffTime = eventDate.toISOString(); // Full UTC ISO timestamp
   const timeKey = sortTimestamp === Number.MAX_SAFE_INTEGER ? 'TBD' : isoTime;
   // ESPN college games - use 'ncaa' as league identifier
   const key = buildGameKey(dateKey, timeKey, homeTeamName, awayTeamName, venue, 'ncaa');

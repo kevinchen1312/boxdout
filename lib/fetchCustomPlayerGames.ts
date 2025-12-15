@@ -90,7 +90,7 @@ const getTeamDirectory = async (): Promise<Map<string, TeamDirectoryEntry>> => {
   return directory;
 };
 
-const findTeamEntry = async (teamName: string): Promise<TeamDirectoryEntry | null> => {
+export const findTeamEntry = async (teamName: string): Promise<TeamDirectoryEntry | null> => {
   const directory = await getTeamDirectory();
   const normalized = normalizeForLookup(teamName);
   

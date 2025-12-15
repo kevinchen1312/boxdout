@@ -295,6 +295,26 @@ const GameCard = memo(function GameCard({ game, compact = false, rankingSource =
     otherTeamLogo: string | null | undefined,
     otherTeamName: string
   ): string | null => {
+    // CRITICAL: For NBL and international teams, trust the original logo URL
+    // NBL team IDs (1-10) overlap with NCAA team IDs, so we can't construct logos from IDs
+    // e.g., NBL ID 8 = South East Melbourne Phoenix, NCAA ID 8 = Arkansas
+    // Similarly, API Basketball teams have IDs that might collide with ESPN NCAA IDs
+    const isNBLLogo = team.logo && team.logo.includes('/nbl/');
+    const isAPIBasketballLogo = team.logo && team.logo.includes('api-sports.io');
+    const isInternationalLogo = team.logo && (
+      team.logo.includes('/international/') ||
+      team.logo.includes('mega-superbet') ||
+      team.logo.includes('paris') ||
+      team.logo.includes('valencia') ||
+      team.logo.includes('partizan') ||
+      team.logo.includes('euroleague')
+    );
+    
+    // For NBL, API Basketball, and international teams, use the original logo directly
+    if (isNBLLogo || isAPIBasketballLogo || isInternationalLogo) {
+      return team.logo || null;
+    }
+    
     // Get team ID from tracked players (most reliable - already matched correctly to team names)
     const trackedTeamIds = trackedPlayers
       .map(p => p.teamId)
@@ -309,17 +329,25 @@ const GameCard = memo(function GameCard({ game, compact = false, rankingSource =
       const logoTeamId = trackedTeamIds[0];
       const constructedLogo = `https://a.espncdn.com/i/teamlogos/ncaa/500/${logoTeamId}.png`;
       
+      // Check if team.logo EXACTLY matches this logoTeamId (not just contains it as substring)
+      // e.g., "2" should not match "/2509.png" - only "/2.png"
+      const exactLogoMatch = team.logo && (
+        team.logo.includes(`/${logoTeamId}.png`) || 
+        team.logo.includes(`/${logoTeamId}.svg`) ||
+        team.logo.endsWith(`/${logoTeamId}`)
+      );
+      
       if (isDebugGame) {
         console.log(`[getVerifiedLogo] ${teamName}: Using Priority 1 (tracked players' teamId)`, {
           logoTeamId,
           constructedLogo,
           teamLogo: team.logo,
-          matches: team.logo && team.logo.includes(logoTeamId),
+          exactLogoMatch,
         });
       }
       
-      // If team.logo exists and matches logoTeamId, use it (might be higher quality)
-      if (team.logo && team.logo.includes(logoTeamId)) {
+      // If team.logo EXACTLY matches logoTeamId, use it (might be higher quality)
+      if (exactLogoMatch) {
         return team.logo;
       }
       
@@ -331,17 +359,25 @@ const GameCard = memo(function GameCard({ game, compact = false, rankingSource =
     if (gameTeamId) {
       const constructedLogo = `https://a.espncdn.com/i/teamlogos/ncaa/500/${gameTeamId}.png`;
       
+      // Check if team.logo EXACTLY matches this gameTeamId (not just contains it as substring)
+      // e.g., "2" should not match "/2509.png" - only "/2.png"
+      const exactLogoMatch = team.logo && (
+        team.logo.includes(`/${gameTeamId}.png`) || 
+        team.logo.includes(`/${gameTeamId}.svg`) ||
+        team.logo.endsWith(`/${gameTeamId}`)
+      );
+      
       if (isDebugGame) {
         console.log(`[getVerifiedLogo] ${teamName}: Using Priority 2 (gameTeamId)`, {
           gameTeamId,
           constructedLogo,
           teamLogo: team.logo,
-          matches: team.logo && team.logo.includes(gameTeamId),
+          exactLogoMatch,
         });
       }
       
-      // Only use team.logo if it explicitly matches gameTeamId (quick check)
-      if (team.logo && team.logo.includes(gameTeamId)) {
+      // Only use team.logo if it EXACTLY matches gameTeamId
+      if (exactLogoMatch) {
         return team.logo;
       }
       // Always use constructed logo from gameTeamId (most reliable source)

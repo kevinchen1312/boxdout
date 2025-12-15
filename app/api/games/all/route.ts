@@ -5,7 +5,8 @@ import { auth } from '@clerk/nextjs/server';
 import { getCachedGames, setCachedGames } from '@/lib/supabase';
 import { enrichWithLiveScores } from '@/lib/loadSchedulesFromScoreboard';
 import { localYMD } from '@/app/utils/dateKey';
-import { getBigBoardAndWatchlistProspects, buildTrackedPlayersMap, decorateGamesWithTrackedPlayers } from '@/lib/trackedPlayers';
+import { getBigBoardAndWatchlistProspects } from '@/lib/loadProspects';
+import { buildTrackedPlayersMap, decorateGamesWithTrackedPlayers } from '@/lib/trackedPlayers';
 
 export async function GET(request: NextRequest) {
   try {

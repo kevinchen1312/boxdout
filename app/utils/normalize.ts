@@ -7,10 +7,32 @@ const plain = (s: string) => norm(s).replace(/[^a-z0-9]+/g, '');
 
 const alias = (s: string) => normTeam(s);
 
+// List of common mascot names to strip from team names
+const MASCOTS = [
+  'tigers', 'bulldogs', 'bears', 'lions', 'wildcats', 'eagles', 'hawks', 'owls',
+  'panthers', 'warriors', 'knights', 'pirates', 'raiders', 'cougars', 'hornets',
+  'jayhawks', 'tar heels', 'tarheels', 'blue devils', 'bluedevils', 'crimson tide',
+  'crimsontide', 'fighting irish', 'fightingirish', 'wolverines', 'seminoles',
+  'golden gophers', 'goldengophers', 'cornhuskers', 'spartans', 'nittany lions',
+  'nittanylions', 'mountaineers', 'boilermakers', 'hoosiers', 'flyers', 'explorers',
+  'rams', 'colonials', 'revolutionaries', 'ramblers', 'monarchs', 'tribe', 'shock',
+  'royals', 'cowboys', 'dragons', 'dukes', 'miners', 'cajuns', 'volunteers',
+  'cardinals', 'bearcats', 'rebels', 'aggies', 'longhorns', 'sooners', 'buckeyes',
+  'trojans', 'bruins', 'huskies', 'ducks', 'beavers', 'sun devils', 'sundevils',
+  'utes', 'buffaloes', 'buffs', 'cyclones', 'red raiders', 'redraiders', 'horned frogs',
+  'hornedfrogs', 'razorbacks', 'gamecocks', 'gators', 'hurricanes', 'hokies',
+  'cavaliers', 'terrapins', 'terps', 'badgers', 'hawkeyes', 'illini', 'wildcats',
+  'orange', 'demon deacons', 'demondeacons', 'yellow jackets', 'yellowjackets',
+  'wolfpack', 'wolf pack', 'flames', 'aggies', 'owls', 'cougars'
+].join('|');
+
+const MASCOT_REGEX = new RegExp(`\\s+(${MASCOTS})$`, 'i');
+
 export const normTeam = (s: string) =>
   (s || '')
     .toLowerCase()
     .replace(/\bmen'?s?\s*basketball\b|\bmbb\b/gi, '')
+    .replace(MASCOT_REGEX, '') // Strip mascot names
     .replace(/&/g, 'and')
     .replace(/[^a-z0-9]/g, '')
     .trim();
