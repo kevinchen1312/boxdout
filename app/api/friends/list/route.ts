@@ -41,15 +41,17 @@ export async function GET(req: Request) {
 
     // Map to get friend data (the other user in the friendship)
     const friends = friendships?.map(f => {
-      const friend = f.user1_id === userData.id ? f.user2 : f.user1;
+      const friendData = f.user1_id === userData.id ? f.user2 : f.user1;
+      // Handle Supabase's typing (may return as array for joins)
+      const friend = Array.isArray(friendData) ? friendData[0] : friendData;
       return {
-        id: friend.id,
-        username: friend.username,
-        email: friend.email,
+        id: friend?.id,
+        username: friend?.username,
+        email: friend?.email,
         friendshipId: f.id,
         since: f.created_at,
       };
-    }) || [];
+    }).filter(f => f.id) || [];
 
     // Get pending received requests
     const { data: receivedRequests, error: receivedError } = await supabaseAdmin
