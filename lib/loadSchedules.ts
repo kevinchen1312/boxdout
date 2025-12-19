@@ -20,6 +20,12 @@ const getETDateKey = (date: Date): string => {
   return date.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 };
 
+// Helper to get Eastern Time date key from an ISO string
+// Use this for fallbacks instead of .substring(0, 10) which uses UTC
+export const getETDateKeyFromISO = (isoString: string): string => {
+  return getETDateKey(new Date(isoString));
+};
+
 // Helper to get Eastern Time hours and minutes for sort timestamp
 const getETTimeComponents = (date: Date): { hours: number; minutes: number } => {
   const etTimeString = date.toLocaleTimeString('en-US', { 
@@ -2258,7 +2264,8 @@ const enrichWithBroadcasts = async (
   const gamesByDate = new Map<string, AggregatedGameInternal[]>();
 
   for (const game of aggregatedGames.values()) {
-    const dateKey = game.dateKey ?? game.date.substring(0, 10);
+    // Use ET date key, not UTC from ISO string
+    const dateKey = game.dateKey ?? getETDateKeyFromISO(game.date);
     if (!gamesByDate.has(dateKey)) {
       gamesByDate.set(dateKey, []);
     }
@@ -3456,7 +3463,8 @@ const buildSchedules = async (
       
       // Helper to find existing game by teams and date (fallback when key doesn't match)
       const findExistingGameByTeams = (entry: ParsedScheduleEntry): AggregatedGameInternal | undefined => {
-        const entryDateKey = entry.game.dateKey || entry.game.date.substring(0, 10);
+        // Use ET date key, not UTC from ISO string
+        const entryDateKey = entry.game.dateKey || getETDateKeyFromISO(entry.game.date);
         const entryHomeName = entry.game.homeTeam.displayName || entry.game.homeTeam.name || '';
         const entryAwayName = entry.game.awayTeam.displayName || entry.game.awayTeam.name || '';
         
@@ -3476,7 +3484,8 @@ const buildSchedules = async (
         
         // Search through all aggregated games to find a match
         for (const [existingKey, existingGame] of aggregatedGames.entries()) {
-          const existingDateKey = existingGame.dateKey || existingGame.date.substring(0, 10);
+          // Use ET date key, not UTC from ISO string
+          const existingDateKey = existingGame.dateKey || getETDateKeyFromISO(existingGame.date);
           if (existingDateKey !== entryDateKey) continue;
           
           const existingHomeName = existingGame.homeTeam.displayName || existingGame.homeTeam.name || '';
@@ -4609,7 +4618,8 @@ const buildSchedules = async (
   // Create merge key that matches buildGameKey format for consistency
   // This ensures games created with buildGameKey can be properly merged
   const createMergeKey = (game: GameWithProspects) => {
-    const dateKey = game.dateKey ?? game.date.substring(0, 10);
+    // Use ET date key, not UTC from ISO string
+    const dateKey = game.dateKey ?? getETDateKeyFromISO(game.date);
     const tipoff = normalizeTipoffForMerge(game);
     // Normalize team names before sanitizing to ensure consistent merging
     const homeDisplayName = game.homeTeam.displayName || game.homeTeam.name || '';
@@ -4641,7 +4651,8 @@ const buildSchedules = async (
   // Helper function to create a team-only merge key (without tipoff) for fallback merging
   // This ignores venue to catch games that are the same but have different venue info
   const createTeamOnlyMergeKey = (game: GameWithProspects) => {
-    const dateKey = game.dateKey ?? game.date.substring(0, 10);
+    // Use ET date key, not UTC from ISO string
+    const dateKey = game.dateKey ?? getETDateKeyFromISO(game.date);
     const homeDisplayName = game.homeTeam.displayName || game.homeTeam.name || '';
     const awayDisplayName = game.awayTeam.displayName || game.awayTeam.name || '';
     const normalizedHome = normalizeTeamNameForMerge(homeDisplayName);
@@ -4657,7 +4668,8 @@ const buildSchedules = async (
 
   for (const [key, game] of gamesToProcess) {
     const finalized = finalizeGame(key, game);
-    const dateKey = finalized.dateKey ?? finalized.date.substring(0, 10);
+    // Use ET date key, not UTC from ISO string
+    const dateKey = finalized.dateKey ?? getETDateKeyFromISO(finalized.date);
     if (!gamesByDateMap[dateKey]) {
       gamesByDateMap[dateKey] = new Map<string, GameWithProspects>();
     }

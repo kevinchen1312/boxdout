@@ -3,7 +3,7 @@
 import { supabaseAdmin } from './supabase';
 import { format, parseISO } from 'date-fns';
 import { fetchProspectScheduleFromApiBasketball } from './loadSchedulesFromApiBasketball';
-import { getTeamDirectory } from './loadSchedules';
+import { getTeamDirectory, getETDateKeyFromISO } from './loadSchedules';
 import type { Prospect } from '@/app/types/prospect';
 
 interface GameData {
@@ -79,7 +79,8 @@ export async function fetchAndStoreInternationalProspectGames(
     // Convert schedule entries to GameData format
     const games: GameData[] = scheduleEntries.map(entry => {
       const game = entry.game;
-      const dateKey = game.dateKey || game.date.substring(0, 10);
+      // Use ET date key, not UTC from ISO string
+      const dateKey = game.dateKey || getETDateKeyFromISO(game.date);
       
       // Format tipoff time
       let tipoff: string | null = null;
