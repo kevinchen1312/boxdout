@@ -85,30 +85,38 @@ export async function GET() {
 
     // Combine and normalize into activity items
     const items = [
-      ...(watched || []).map((w: any) => ({
-        type: 'watched' as const,
-        id: w.id,
-        user: {
-          id: w.user.id,
-          username: w.user.username,
-          email: w.user.email,
-        },
-        gameId: w.game_id,
-        gameDate: w.game_date,
-        timestamp: w.watched_at,
-      })),
-      ...(notes || []).map((n: any) => ({
-        type: 'note' as const,
-        id: n.id,
-        user: {
-          id: n.user.id,
-          username: n.user.username,
-          email: n.user.email,
-        },
-        gameId: n.game_id,
-        content: n.content,
-        timestamp: n.updated_at,
-      })),
+      ...(watched || []).map((w: any) => {
+        // Handle Supabase's typing (may return as array for joins)
+        const wUser = Array.isArray(w.user) ? w.user[0] : w.user;
+        return {
+          type: 'watched' as const,
+          id: w.id,
+          user: {
+            id: wUser?.id,
+            username: wUser?.username,
+            email: wUser?.email,
+          },
+          gameId: w.game_id,
+          gameDate: w.game_date,
+          timestamp: w.watched_at,
+        };
+      }),
+      ...(notes || []).map((n: any) => {
+        // Handle Supabase's typing (may return as array for joins)
+        const nUser = Array.isArray(n.user) ? n.user[0] : n.user;
+        return {
+          type: 'note' as const,
+          id: n.id,
+          user: {
+            id: nUser?.id,
+            username: nUser?.username,
+            email: nUser?.email,
+          },
+          gameId: n.game_id,
+          content: n.content,
+          timestamp: n.updated_at,
+        };
+      }),
     ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
      .slice(0, 30); // Limit to 30 most recent
 

@@ -42,12 +42,16 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Failed to fetch members' }, { status: 500 });
     }
 
-    const formattedMembers = members?.map(m => ({
-      id: m.user.id,
-      username: m.user.username,
-      email: m.user.email,
-      joinedAt: m.joined_at,
-    })) || [];
+    const formattedMembers = members?.map(m => {
+      // Handle Supabase's typing (may return as array for joins)
+      const mUser = Array.isArray(m.user) ? m.user[0] : m.user;
+      return {
+        id: mUser?.id,
+        username: mUser?.username,
+        email: mUser?.email,
+        joinedAt: m.joined_at,
+      };
+    }).filter(m => m.id) || [];
 
     return NextResponse.json({ members: formattedMembers });
   } catch (error) {

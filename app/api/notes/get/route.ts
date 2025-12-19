@@ -49,10 +49,14 @@ export async function GET(req: Request) {
     }
 
     // Mark which notes belong to the current user
-    const notesWithOwnership = notes?.map(note => ({
-      ...note,
-      isOwn: currentUserId ? note.user.id === currentUserId : false,
-    })) || [];
+    const notesWithOwnership = notes?.map(note => {
+      // Handle Supabase's typing (may return as array for joins)
+      const noteUser = Array.isArray(note.user) ? note.user[0] : note.user;
+      return {
+        ...note,
+        isOwn: currentUserId && noteUser ? noteUser.id === currentUserId : false,
+      };
+    }) || [];
 
     return NextResponse.json({ notes: notesWithOwnership });
   } catch (error) {
