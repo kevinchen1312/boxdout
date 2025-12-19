@@ -107,33 +107,44 @@ export const clearScheduleCache = (source?: RankingSource) => {
 const shouldInvalidateCache = (): boolean => {
   if (!cacheTimestamp) return false;
   
-  const rootDir = process.cwd();
-  const files = fs.readdirSync(rootDir).filter((file) => file.endsWith(SCHEDULE_SUFFIX));
-  
-  for (const file of files) {
-    const filePath = path.join(rootDir, file);
-    try {
-      const stats = fs.statSync(filePath);
-      if (stats.mtimeMs > cacheTimestamp) {
+  try {
+    const rootDir = process.cwd();
+    const files = fs.readdirSync(rootDir).filter((file) => file.endsWith(SCHEDULE_SUFFIX));
+    
+    for (const file of files) {
+      const filePath = path.join(rootDir, file);
+      try {
+        const stats = fs.statSync(filePath);
+        if (stats.mtimeMs > cacheTimestamp) {
+          return true;
+        }
+      } catch {
+        // File might have been deleted, invalidate cache
         return true;
       }
-    } catch {
-      // File might have been deleted, invalidate cache
-      return true;
     }
+    
+    return false;
+  } catch (error) {
+    // On Vercel/serverless, fs operations may fail - don't invalidate cache
+    console.log('[Schedule] shouldInvalidateCache: fs error (expected on Vercel), skipping cache check');
+    return false;
   }
-  
-  return false;
 };
 
 // Force cache invalidation for testing - touch a schedule file to trigger rebuild
 export const forceCacheInvalidation = () => {
-  const rootDir = process.cwd();
-  const testFile = path.join(rootDir, 'ognjen_srzentic_schedule.txt');
-  if (fs.existsSync(testFile)) {
-    const now = new Date();
-    fs.utimesSync(testFile, now, now);
-    console.log('[Schedule] Forced cache invalidation by touching schedule file');
+  try {
+    const rootDir = process.cwd();
+    const testFile = path.join(rootDir, 'ognjen_srzentic_schedule.txt');
+    if (fs.existsSync(testFile)) {
+      const now = new Date();
+      fs.utimesSync(testFile, now, now);
+      console.log('[Schedule] Forced cache invalidation by touching schedule file');
+    }
+  } catch (error) {
+    // On Vercel/serverless, fs operations may fail - just clear the cache
+    console.log('[Schedule] forceCacheInvalidation: fs error (expected on Vercel)');
   }
   clearScheduleCache();
 };
@@ -3629,6 +3640,7 @@ const buildSchedules = async (
     // Load international teams from text files (even when ESPN API mode is enabled)
     // These teams don't have ESPN API coverage, so we use text files updated via: npm run fetch:pros
     // BUT: Don't load text files for API-only teams (Mega Superbet, ASVEL, Joventut, etc.) - they should only use API
+    // NOTE: On Vercel/serverless, txt files aren't available - this is expected and we skip gracefully
     if (internationalProspects.length > 0 || prospectsWithoutTeamId.length > 0) {
       const apiBasketballOnlyTeams = ['mega', 'megasuperbet', 'asvel', 'joventut', 'valencia', 'paris'];
       
@@ -3653,8 +3665,15 @@ const buildSchedules = async (
       );
       
       // Load from text files for international teams
-      const rootDir = process.cwd();
-      const files = fs.readdirSync(rootDir).filter((file) => file.endsWith(SCHEDULE_SUFFIX));
+      // Wrap in try-catch for Vercel/serverless where fs operations may fail
+      let files: string[] = [];
+      let rootDir = process.cwd();
+      try {
+        files = fs.readdirSync(rootDir).filter((file) => file.endsWith(SCHEDULE_SUFFIX));
+      } catch (fsError) {
+        console.log(`[Schedule] Could not read schedule files from disk (expected on Vercel/serverless)`);
+        files = [];
+      }
       
       if (files.length > 0) {
         console.log(`[Schedule] Found ${files.length} schedule files, parsing for international teams...`);
@@ -3817,14 +3836,26 @@ const buildSchedules = async (
     console.timeEnd('[Schedule] fetchSchedulesFromESPN');
   } else {
     // TXT FILE MODE (legacy): Parse schedule files from disk
+    // NOTE: This mode won't work on Vercel/serverless - use ESPN API mode instead
     const rootDir = process.cwd();
-    const files = fs.readdirSync(rootDir).filter((file) => file.endsWith(SCHEDULE_SUFFIX));
+    let files: string[] = [];
+    try {
+      files = fs.readdirSync(rootDir).filter((file) => file.endsWith(SCHEDULE_SUFFIX));
+    } catch (fsError) {
+      console.error(`[Schedule] Could not read schedule files from disk - TXT FILE MODE requires local filesystem`);
+      console.log(`[Schedule] On Vercel/serverless, set USE_ESPN_API_SCHEDULES=true (or leave unset) to use ESPN API mode`);
+      files = [];
+    }
     
     console.log(`[Schedule] Found ${files.length} schedule files in ${rootDir}`);
     if (files.length === 0) {
       console.warn(`[Schedule] No schedule files found! Looking for files ending with "${SCHEDULE_SUFFIX}"`);
-      const allTxtFiles = fs.readdirSync(rootDir).filter((file) => file.endsWith('.txt'));
-      console.log(`[Schedule] Found ${allTxtFiles.length} .txt files total. First 5:`, allTxtFiles.slice(0, 5));
+      try {
+        const allTxtFiles = fs.readdirSync(rootDir).filter((file) => file.endsWith('.txt'));
+        console.log(`[Schedule] Found ${allTxtFiles.length} .txt files total. First 5:`, allTxtFiles.slice(0, 5));
+      } catch {
+        console.log(`[Schedule] Could not list txt files (expected on Vercel/serverless)`);
+      }
     }
 
     // Parse all files in parallel (OPTIMIZATION: was sequential before)
