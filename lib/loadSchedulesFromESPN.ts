@@ -185,9 +185,17 @@ const formatTimeFromESPN = (eventDate: string, status?: { type?: { state?: strin
 };
 
 // Format date from ESPN API ISO string
+// IMPORTANT: Use Eastern Time to determine the calendar date, not UTC or server local time
+// This ensures games at 9pm ET don't get placed on the next day's calendar (which would happen in UTC)
 const formatDateFromESPN = (isoString: string): { date: Date; dateKey: string } => {
   const date = new Date(isoString);
-  const dateKey = format(date, 'yyyy-MM-dd');
+  
+  // Convert to Eastern Time to get the correct calendar date
+  // This is the reference timezone for US sports scheduling
+  const etDateString = date.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  // en-CA locale gives us YYYY-MM-DD format directly
+  const dateKey = etDateString;
+  
   return { date, dateKey };
 };
 

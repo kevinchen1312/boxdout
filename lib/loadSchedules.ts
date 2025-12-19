@@ -12,6 +12,26 @@ import { canUseInternationalScraper } from './loadInternationalFromScrapers';
 import { fetchProspectScheduleFromApiBasketball, canUseApiBasketball } from './loadSchedulesFromApiBasketball';
 import { getManualInjuryStatus } from './manualInjuries';
 
+// Helper to get Eastern Time date key from a Date object
+// This ensures games are placed on the correct calendar day in Eastern Time
+// (e.g., a 9pm ET game won't appear on the next day's calendar when server is in UTC)
+const getETDateKey = (date: Date): string => {
+  // en-CA locale gives us YYYY-MM-DD format directly
+  return date.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+};
+
+// Helper to get Eastern Time hours and minutes for sort timestamp
+const getETTimeComponents = (date: Date): { hours: number; minutes: number } => {
+  const etTimeString = date.toLocaleTimeString('en-US', { 
+    hour: '2-digit', 
+    minute: '2-digit', 
+    hourCycle: 'h23',
+    timeZone: 'America/New_York' 
+  });
+  const [hours, minutes] = etTimeString.split(':').map(Number);
+  return { hours, minutes };
+};
+
 export interface ParsedScheduleEntry {
   key: string;
   game: AggregatedGameInternal;
@@ -2444,9 +2464,9 @@ const loadInternationalRosterGames = async (
       
       // Build game key to group duplicate games
       const gameDate = new Date(gameData.date);
-      const dateKey = gameDate.toISOString().split('T')[0];
-      const hours = gameDate.getUTCHours();
-      const minutes = gameDate.getUTCMinutes();
+      // Use Eastern Time for dateKey to ensure games appear on correct calendar day
+      const dateKey = getETDateKey(gameDate);
+      const { hours, minutes } = getETTimeComponents(gameDate);
       const isoTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
       const sourceIdentifier = `intl-${gameData.league_id || 'unknown'}`;
       const key = buildGameKey(
@@ -2502,11 +2522,11 @@ const loadInternationalRosterGames = async (
 
       // Parse date (reuse from gameData)
       const gameDate = new Date(gameData.date);
-      const dateKey = gameDate.toISOString().split('T')[0]; // YYYY-MM-DD format
+      // Use Eastern Time for dateKey to ensure games appear on correct calendar day
+      const dateKey = getETDateKey(gameDate);
 
-      // Parse time for sortTimestamp
-      const hours = gameDate.getUTCHours();
-      const minutes = gameDate.getUTCMinutes();
+      // Parse time for sortTimestamp using ET (consistent with NCAA games)
+      const { hours, minutes } = getETTimeComponents(gameDate);
       const sortTimestamp = hours * 60 + minutes;
       const isoTime = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:00`;
 
