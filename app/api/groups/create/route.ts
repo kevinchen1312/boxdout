@@ -43,7 +43,7 @@ export async function POST(req: Request) {
     }
 
     // Add owner as a member
-    const { error: memberError } = await supabase
+    const { error: memberError } = await supabaseAdmin
       .from('group_members')
       .insert({
         group_id: group.id,
