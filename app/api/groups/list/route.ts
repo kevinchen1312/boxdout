@@ -51,7 +51,7 @@ export async function GET(req: Request) {
     }
 
     // Get the group details for groups where user is a member
-    let memberGroups = [];
+    let memberGroups: typeof ownedGroups = [];
     if (memberships && memberships.length > 0) {
       const memberGroupIds = memberships.map(m => m.group_id);
       const { data: memberGroupData, error: memberGroupError } = await supabaseAdmin
