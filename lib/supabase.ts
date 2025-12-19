@@ -1,22 +1,55 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+// Lazy initialization to avoid errors during build when env vars aren't available
+let _supabase: SupabaseClient | null = null;
+let _supabaseAdmin: SupabaseClient | null = null;
 
-// Client for browser usage
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-// Server-side client with service role (for admin operations)
-export const supabaseAdmin = createClient(
-  supabaseUrl,
-  process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
+function getSupabaseUrl(): string {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  if (!url) {
+    throw new Error('NEXT_PUBLIC_SUPABASE_URL is not configured');
   }
-);
+  return url;
+}
+
+function getSupabaseAnonKey(): string {
+  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!key) {
+    throw new Error('NEXT_PUBLIC_SUPABASE_ANON_KEY is not configured');
+  }
+  return key;
+}
+
+// Client for browser usage (lazy initialization)
+export const supabase = new Proxy({} as SupabaseClient, {
+  get(_, prop) {
+    if (!_supabase) {
+      _supabase = createClient(getSupabaseUrl(), getSupabaseAnonKey());
+    }
+    return (_supabase as any)[prop];
+  },
+});
+
+// Server-side client with service role (for admin operations) - lazy initialization
+export const supabaseAdmin = new Proxy({} as SupabaseClient, {
+  get(_, prop) {
+    if (!_supabaseAdmin) {
+      const url = getSupabaseUrl();
+      const anonKey = getSupabaseAnonKey();
+      _supabaseAdmin = createClient(
+        url,
+        process.env.SUPABASE_SERVICE_ROLE_KEY || anonKey,
+        {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false,
+          },
+        }
+      );
+    }
+    return (_supabaseAdmin as any)[prop];
+  },
+});
 
 // Helper function to get Supabase user ID from Clerk user ID
 export async function getSupabaseUserId(clerkUserId: string): Promise<string | null> {
@@ -457,7 +490,7 @@ export interface CachedGameData {
 export async function getCachedGames(cacheKey: string, allowStale = false): Promise<CachedGameData | null> {
   try {
     // Check if Supabase is configured
-    if (!supabaseUrl || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
       console.log('[Cache] Supabase not fully configured, skipping cache');
       return null;
     }
@@ -506,7 +539,7 @@ export async function getCachedGames(cacheKey: string, allowStale = false): Prom
 export async function setCachedGames(cacheKey: string, data: CachedGameData): Promise<boolean> {
   try {
     // Check if Supabase is configured
-    if (!supabaseUrl || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
       console.log('[Cache] Supabase not fully configured, skipping cache write');
       return false;
     }
@@ -545,7 +578,7 @@ export async function setCachedGames(cacheKey: string, data: CachedGameData): Pr
 export async function clearCachedGames(cacheKey: string): Promise<boolean> {
   try {
     // Check if Supabase is configured
-    if (!supabaseUrl || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
       console.log('[Cache] Supabase not fully configured, skipping cache clear');
       return false;
     }
