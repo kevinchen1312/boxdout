@@ -12,9 +12,9 @@ interface GameCardProps {
   game: GameWithProspects;
   compact?: boolean;
   rankingSource?: RankingSource;
-  onOpenNotes?: (game: GameWithProspects) => void;
   watched?: boolean;
   hasNote?: boolean;
+  hideEyeIcon?: boolean;
 }
 
 const deriveTipoff = (game: GameWithProspects) => {
@@ -61,7 +61,7 @@ const formatGameDate = (game: GameWithProspects) => {
   }
 };
 
-const GameCard = memo(function GameCard({ game, compact = false, rankingSource = 'espn', onOpenNotes, watched: initialWatched = false, hasNote: initialHasNote = false }: GameCardProps) {
+const GameCard = memo(function GameCard({ game, compact = false, rankingSource = 'espn', watched: initialWatched = false, hasNote: initialHasNote = false, hideEyeIcon = false }: GameCardProps) {
   const [showTooltip, setShowTooltip] = useState(false);
   const [watched, setWatched] = useState(initialWatched);
   const [hasNote, setHasNote] = useState(initialHasNote);
@@ -167,12 +167,6 @@ const GameCard = memo(function GameCard({ game, compact = false, rankingSource =
     }
   };
 
-  const handleOpenNotes = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (onOpenNotes) {
-      onOpenNotes(game);
-    }
-  };
 
   if (compact) {
     return (
@@ -348,7 +342,7 @@ const GameCard = memo(function GameCard({ game, compact = false, rankingSource =
       
       // If team.logo EXACTLY matches logoTeamId, use it (might be higher quality)
       if (exactLogoMatch) {
-        return team.logo;
+        return team.logo || null;
       }
       
       return constructedLogo;
@@ -378,7 +372,7 @@ const GameCard = memo(function GameCard({ game, compact = false, rankingSource =
       
       // Only use team.logo if it EXACTLY matches gameTeamId
       if (exactLogoMatch) {
-        return team.logo;
+        return team.logo || null;
       }
       // Always use constructed logo from gameTeamId (most reliable source)
       return constructedLogo;
@@ -457,9 +451,9 @@ const GameCard = memo(function GameCard({ game, compact = false, rankingSource =
 
   return (
     <div id={`game-${game.id}`} className="game-card game-row game-card-inner w-full">
-      {/* Time/Score and Network - top left and top right */}
+      {/* Time/Score, Watch button, and Network - top row */}
       <div className="flex items-center justify-between pt-0 pb-1 gap-2">
-        <div className="flex flex-col items-start">
+        <div className="flex flex-col items-start min-w-[70px]">
           <span className={`game-card-time text-left max-w-[100px] truncate ${isCompleted ? 'font-bold' : ''}`}>
             {tipoffText}
           </span>
@@ -469,11 +463,39 @@ const GameCard = memo(function GameCard({ game, compact = false, rankingSource =
             </span>
           )}
         </div>
-        {game.tv && game.tv !== 'TBA' && (
-          <span className="game-card-network text-right max-w-[100px] truncate">
-            {game.tv}
-          </span>
+        {/* Eye icon for watched status - centered (hidden when using GameCardWithPanel) */}
+        {isSignedIn && !hideEyeIcon && (
+          <button
+            onClick={handleToggleWatch}
+            disabled={isTogglingWatch}
+            className="icon-button"
+            title={watched ? 'Mark as unwatched' : 'Mark as watched'}
+            aria-label={watched ? 'Mark as unwatched' : 'Mark as watched'}
+          >
+            <svg 
+              width="18" 
+              height="18" 
+              viewBox="0 0 24 24" 
+              fill="none" 
+              stroke={watched ? '#c2410c' : '#9ca3af'}
+              strokeWidth={watched ? '2.5' : '1.5'}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+              <circle cx="12" cy="12" r="3"></circle>
+            </svg>
+          </button>
         )}
+        {/* Spacer when eye icon is hidden */}
+        {hideEyeIcon && <div className="w-[18px]"></div>}
+        <div className="min-w-[70px] text-right">
+          {game.tv && game.tv !== 'TBA' && (
+            <span className="game-card-network max-w-[100px] truncate">
+              {game.tv}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* School logos side-by-side, centered */}
@@ -626,44 +648,6 @@ const GameCard = memo(function GameCard({ game, compact = false, rankingSource =
           </div>
         </div>
       </div>
-
-      {/* Action buttons - below prospects */}
-      {isSignedIn && (
-        <div className="flex items-center justify-center gap-2 pt-2 pb-0">
-          {/* Eye icon for watched status */}
-          <button
-            onClick={handleToggleWatch}
-            disabled={isTogglingWatch}
-            className="icon-button"
-            title={watched ? 'Mark as unwatched' : 'Mark as watched'}
-            aria-label={watched ? 'Mark as unwatched' : 'Mark as watched'}
-          >
-            <svg 
-              width="20" 
-              height="20" 
-              viewBox="0 0 24 24" 
-              fill="none" 
-              stroke="#6b7280"
-              strokeWidth={watched ? '3' : '2'}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-              <circle cx="12" cy="12" r="3"></circle>
-            </svg>
-          </button>
-          {/* Compose icon for notes */}
-          <button
-            onClick={handleOpenNotes}
-            className="icon-button"
-            style={{ color: hasNote ? '#ea580c' : 'var(--text-meta)', fontSize: '18px' }}
-            title={hasNote ? 'Edit note' : 'Add note'}
-            aria-label={hasNote ? 'Edit note' : 'Add note'}
-          >
-            ✏️
-          </button>
-        </div>
-      )}
     </div>
   );
 });
