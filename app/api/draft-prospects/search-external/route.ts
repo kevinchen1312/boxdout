@@ -338,8 +338,6 @@ export async function GET(request: NextRequest) {
       );
 
       return NextResponse.json<SearchExternalResponse>({ results: resultsWithDetails });
-
-      return NextResponse.json<SearchExternalResponse>({ results });
     } catch (err) {
       console.error('Search-external handler error', err);
       return NextResponse.json(
