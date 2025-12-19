@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import type { Game } from '@/app/types/game';
+import type { GameWithProspects } from '@/app/utils/gameMatching';
 
 /**
  * GET /api/games/team/[teamId]
@@ -50,8 +50,8 @@ export async function GET(
       return NextResponse.json({ games: [], teamId });
     }
 
-    // Transform database format to Game format
-    const games: Game[] = allDbGames.map((dbGame) => ({
+    // Transform database format to GameWithProspects format
+    const games: GameWithProspects[] = allDbGames.map((dbGame) => ({
       id: dbGame.game_id,
       date: dbGame.date,
       dateKey: dbGame.date_key,
