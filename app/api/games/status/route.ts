@@ -63,9 +63,11 @@ export async function POST(req: Request) {
       if (!notesByGame[note.game_id]) {
         notesByGame[note.game_id] = [];
       }
+      // Handle Supabase's typing (may return as array for joins)
+      const noteUser = Array.isArray(note.user) ? note.user[0] : note.user;
       notesByGame[note.game_id].push({
         ...note,
-        isOwn: note.user.id === currentUserId,
+        isOwn: noteUser?.id === currentUserId,
       });
     }
 
