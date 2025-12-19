@@ -115,8 +115,8 @@ export async function GET() {
             : teamGames[0].teams?.away?.name;
           console.log(`🔵   ✅ Found ${teamGames.length} games for team ${teamId} (${teamName}) in season ${season}`);
           console.log(`🔵   Leagues found:`);
-          const leagues = new Set(teamGames.map((g: any) => `${g.league?.id} - ${g.league?.name}`));
-          leagues.forEach((league: string) => console.log(`🔵     - ${league}`));
+          const leagues = new Set<string>(teamGames.map((g: any) => `${g.league?.id} - ${g.league?.name}`));
+          leagues.forEach((league) => console.log(`🔵     - ${league}`));
           
           teamGames.slice(0, 3).forEach((game: any) => {
             console.log(`🔵   - ${game.teams?.home?.name} vs ${game.teams?.away?.name} on ${game.date} (League: ${game.league?.id} - ${game.league?.name})`);
