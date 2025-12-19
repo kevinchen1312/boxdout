@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { fetchProspectScheduleFromApiBasketball, type TeamDirectoryEntry } from '@/lib/loadSchedulesFromApiBasketball';
+import { fetchProspectScheduleFromApiBasketball } from '@/lib/loadSchedulesFromApiBasketball';
+import type { TeamDirectoryEntry } from '@/lib/loadSchedules';
 
 export async function GET() {
   console.log('\n🔵🔵🔵 CHECKING LNB GAMES FOR PARIS & ASVEL 🔵🔵🔵\n');
