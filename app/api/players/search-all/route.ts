@@ -244,25 +244,25 @@ async function searchESPNPlayers(query: string): Promise<UnifiedPlayerSearchResu
         });
         
         const [ncaaResult, nblResult] = await Promise.all([
-          Promise.race([ncaaPromise, timeoutPromise]).catch(() => ({ data: null })),
-          Promise.race([nblPromise, timeoutPromise]).catch(() => ({ data: null })),
+          Promise.race([ncaaPromise, timeoutPromise]).catch(() => ({ data: null as null })),
+          Promise.race([nblPromise, timeoutPromise]).catch(() => ({ data: null as null })),
         ]);
         
-        if (ncaaResult && !('error' in ncaaResult) && ncaaResult.data) {
-          ncaaResult.data.forEach((game: any) => {
-            if (game.espn_team_id && game.home_team_display_name && !teamNamesMap.has(game.espn_team_id)) {
-              teamNamesMap.set(game.espn_team_id, game.home_team_display_name);
-            }
-          });
-        }
+        // Extract data safely with type assertion
+        const ncaaData = ncaaResult && 'data' in ncaaResult && ncaaResult.data ? ncaaResult.data as any[] : [];
+        const nblData = nblResult && 'data' in nblResult && nblResult.data ? nblResult.data as any[] : [];
         
-        if (nblResult && !('error' in nblResult) && nblResult.data) {
-          nblResult.data.forEach((game: any) => {
-            if (game.espn_team_id && game.home_team_display_name && !teamNamesMap.has(game.espn_team_id)) {
-              teamNamesMap.set(game.espn_team_id, game.home_team_display_name);
-            }
-          });
-        }
+        ncaaData.forEach((game) => {
+          if (game.espn_team_id && game.home_team_display_name && !teamNamesMap.has(game.espn_team_id)) {
+            teamNamesMap.set(game.espn_team_id, game.home_team_display_name);
+          }
+        });
+        
+        nblData.forEach((game) => {
+          if (game.espn_team_id && game.home_team_display_name && !teamNamesMap.has(game.espn_team_id)) {
+            teamNamesMap.set(game.espn_team_id, game.home_team_display_name);
+          }
+        });
       } catch (error) {
         console.warn('[search-all] Error fetching team names (non-fatal):', error);
         // Continue without team names - search will still work
