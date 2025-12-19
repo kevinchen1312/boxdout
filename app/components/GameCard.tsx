@@ -286,7 +286,7 @@ const GameCard = memo(function GameCard({ game, compact = false, rankingSource =
     trackedPlayers: typeof leftTrackedPlayers,
     gameTeamId: string | undefined,
     teamName: string,
-    otherTeamLogo: string | null | undefined,
+    otherTeamLogo: string | null,
     otherTeamName: string
   ): string | null => {
     // CRITICAL: For NBL and international teams, trust the original logo URL
@@ -426,14 +426,14 @@ const GameCard = memo(function GameCard({ game, compact = false, rankingSource =
   const leftDisplayTeam: DisplayTeam = {
     id: leftTeam.id,
     name: leftTeamName,
-    logo: getVerifiedLogo(leftTeam, leftTeam.id, leftTrackedPlayers, leftGameTeamId, leftTeamName, rightTeam.logo ?? undefined, rightTeamName) || null,
+    logo: getVerifiedLogo(leftTeam, leftTeam.id, leftTrackedPlayers, leftGameTeamId, leftTeamName, rightTeam.logo ?? null, rightTeamName) || null,
     trackedPlayers: leftTrackedPlayers,
   };
   
   const rightDisplayTeam: DisplayTeam = {
     id: rightTeam.id,
     name: rightTeamName,
-    logo: getVerifiedLogo(rightTeam, rightTeam.id, rightTrackedPlayers, rightGameTeamId, rightTeamName, leftTeam.logo ?? undefined, leftTeamName) || null,
+    logo: getVerifiedLogo(rightTeam, rightTeam.id, rightTrackedPlayers, rightGameTeamId, rightTeamName, leftTeam.logo ?? null, leftTeamName) || null,
     trackedPlayers: rightTrackedPlayers,
   };
   
