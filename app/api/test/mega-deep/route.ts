@@ -94,8 +94,8 @@ export async function GET() {
     console.log(`🔵   Found ${dateRangeGames.length} games with date range`);
     if (dateRangeGames.length > 0) {
       console.log(`🔵   Leagues found:`);
-      const leagues = new Set(dateRangeGames.map((g: any) => `${g.league?.id} - ${g.league?.name}`));
-      leagues.forEach((league: string) => console.log(`🔵     - ${league}`));
+      const leagues = new Set<string>(dateRangeGames.map((g: any) => `${g.league?.id} - ${g.league?.name}`));
+      leagues.forEach((league) => console.log(`🔵     - ${league}`));
       dateRangeGames.slice(0, 5).forEach((g: any) => {
         console.log(`🔵   - ${g.teams?.home?.name} vs ${g.teams?.away?.name} on ${g.date} (League: ${g.league?.id} - ${g.league?.name})`);
       });
