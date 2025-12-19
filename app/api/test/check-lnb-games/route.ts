@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
-import { fetchProspectScheduleFromApiBasketball } from '@/lib/loadSchedulesFromApiBasketball';
+import { fetchProspectScheduleFromApiBasketball, type TeamDirectoryEntry } from '@/lib/loadSchedulesFromApiBasketball';
 
 export async function GET() {
   console.log('\n🔵🔵🔵 CHECKING LNB GAMES FOR PARIS & ASVEL 🔵🔵🔵\n');
   
   try {
+    // Create empty directory map for testing (team lookup will use API)
+    const directory = new Map<string, TeamDirectoryEntry>();
+    
     // Test Paris Basketball
     const parisProspect = {
       name: 'Mouhamed Faye',
@@ -16,7 +19,7 @@ export async function GET() {
     const parisGames = await fetchProspectScheduleFromApiBasketball(
       parisProspect as any,
       'Paris Basketball',
-      'public/data/pro_schedules'
+      directory
     );
     
     const parisLnbGames = parisGames.filter(g => 
@@ -38,7 +41,7 @@ export async function GET() {
     const asvelGames = await fetchProspectScheduleFromApiBasketball(
       asvelProspect as any,
       'ASVEL',
-      'public/data/pro_schedules'
+      directory
     );
     
     const asvelLnbGames = asvelGames.filter(g => 
