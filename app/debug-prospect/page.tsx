@@ -302,7 +302,7 @@ export default function DebugProspectPage() {
                 <strong>Games by League:</strong>
                 <ul className="list-disc ml-6 mt-1">
                   {Object.entries(data.databaseStats.leagueCounts).map(([league, count]) => (
-                    <li key={league}>{league}: {count} games</li>
+                    <li key={league}>{league}: {String(count)} games</li>
                   ))}
                 </ul>
               </div>

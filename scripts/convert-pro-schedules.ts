@@ -32,12 +32,18 @@ function convertCSVToSchedule(csvPath: string, prospect: ProspectInfo): string {
   const header = `${prospect.name} 2025-26 ${prospect.team} Schedule`;
   const rankLine = `Rank: #${prospect.rank}`;
   const gameLines: string[] = [];
+  let competition = '';
+  let sourceUrl = '';
   
   for (const line of lines) {
     const parts = line.split(',').map(p => p.trim());
     if (parts.length < 5) continue;
     
     const [dateStr, timeET, comp, opponent, hoa, venue, url] = parts;
+    
+    // Save competition and URL from first valid line
+    if (!competition && comp) competition = comp;
+    if (!sourceUrl && url) sourceUrl = url;
     
     // Parse date: "2025-10-05" -> "Oct 5, 2025"
     const date = parse(dateStr, 'yyyy-MM-dd', new Date());
@@ -69,8 +75,8 @@ function convertCSVToSchedule(csvPath: string, prospect: ProspectInfo): string {
     ...gameLines,
     '',
     'Notes:',
-    `- Games from ${comp} schedule.`,
-    `- Source: ${url || 'Team website'}`,
+    `- Games from ${competition} schedule.`,
+    `- Source: ${sourceUrl || 'Team website'}`,
     '',
   ].join('\n');
 }

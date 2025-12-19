@@ -14,7 +14,7 @@ interface LeagueInfo {
   id: number;
   name: string;
   type: string;
-  country: string;
+  country: { name?: string } | string;
   seasons: any[];
 }
 
@@ -95,7 +95,7 @@ async function discoverLeagues() {
       for (const league of leagues) {
         if (!foundLeagues.has(league.id)) {
           foundLeagues.set(league.id, league);
-          console.log(`     - [${league.id}] ${league.name} (${league.country?.name || 'Unknown'})`);
+          console.log(`     - [${league.id}] ${league.name} (${typeof league.country === 'object' ? league.country?.name : league.country || 'Unknown'})`);
         }
       }
     }
@@ -112,7 +112,7 @@ async function discoverLeagues() {
 
   for (const [leagueId, league] of foundLeagues) {
     console.log(`\n🏀 ${league.name} (ID: ${leagueId})`);
-    console.log(`   Country: ${league.country?.name || 'Unknown'}`);
+    console.log(`   Country: ${typeof league.country === 'object' ? league.country?.name : league.country || 'Unknown'}`);
     console.log(`   Type: ${league.type || 'Unknown'}`);
     
     // Get seasons
@@ -134,7 +134,7 @@ async function discoverLeagues() {
       leagueDetails.push({
         id: leagueId,
         name: league.name,
-        country: league.country?.name,
+        country: typeof league.country === 'object' ? league.country?.name : league.country,
         type: league.type,
         seasonFormat,
         recentSeasons: seasonFormats,

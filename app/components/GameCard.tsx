@@ -206,11 +206,11 @@ const GameCard = memo(function GameCard({ game, compact = false, rankingSource =
   
   // Helper to extract ESPN team ID from logo URL
   // ESPN logo URLs are like: https://a.espncdn.com/i/teamlogos/ncaa/500/41.png
-  const extractTeamIdFromLogo = (logoUrl: string | null | undefined): string | null => {
-    if (!logoUrl) return null;
+  const extractTeamIdFromLogo = (logoUrl: string | null | undefined): string | undefined => {
+    if (!logoUrl) return undefined;
     // Match pattern: /500/41.png or /500-dark/41.png
     const match = logoUrl.match(/\/(\d+)\/(\d+)\.png/);
-    return match ? match[2] : null; // Return the team ID (second number)
+    return match ? match[2] : undefined; // Return the team ID (second number)
   };
   
   // Left side = Away Team
@@ -426,14 +426,14 @@ const GameCard = memo(function GameCard({ game, compact = false, rankingSource =
 const leftDisplayTeam: DisplayTeam = {
     id: leftTeam.id,
     name: leftTeamName,
-    logo: getVerifiedLogo(leftTeam, leftTeam.id, leftTrackedPlayers, leftGameTeamId, leftTeamName, rightTeam.logo ?? undefined, rightTeamName) || null,
+    logo: getVerifiedLogo(leftTeam, leftTeam.id, leftTrackedPlayers, leftGameTeamId, leftTeamName, rightTeam.logo === null ? undefined : rightTeam.logo, rightTeamName) || null,
     trackedPlayers: leftTrackedPlayers,
   };
 
   const rightDisplayTeam: DisplayTeam = {
     id: rightTeam.id,
     name: rightTeamName,
-    logo: getVerifiedLogo(rightTeam, rightTeam.id, rightTrackedPlayers, rightGameTeamId, rightTeamName, leftTeam.logo ?? undefined, leftTeamName) || null,
+    logo: getVerifiedLogo(rightTeam, rightTeam.id, rightTrackedPlayers, rightGameTeamId, rightTeamName, leftTeam.logo === null ? undefined : leftTeam.logo, leftTeamName) || null,
     trackedPlayers: rightTrackedPlayers,
   };
   

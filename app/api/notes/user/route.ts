@@ -21,7 +21,7 @@ export async function GET() {
       return NextResponse.json({ error: 'User not found' }, { status: 404 });
     }
 
-    // Fetch all notes for this user
+    // Fetch all notes for this user (without game_metadata since the column doesn't exist yet)
     const { data: notes, error } = await supabaseAdmin
       .from('notes')
       .select(`

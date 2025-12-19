@@ -952,11 +952,15 @@ export function useGames(options: UseGamesOptions = {}) {
           
           // Build maps for efficient lookup
           const existingGamesByKey = new Map<string, GameWithProspects>();
+          const existingGamesByNormalizedKey = new Map<string, GameWithProspects>();
           const existingGamesByTeamIds = new Map<string, GameWithProspects>();
           
           for (const existingGame of merged[dateKey]) {
             const key = existingGame.gameKey || getGameKey(existingGame);
             existingGamesByKey.set(key, existingGame);
+            // Also index by normalized key (without league identifier)
+            const normalizedKey = key.replace(/__[^_]+$/, '');
+            existingGamesByNormalizedKey.set(normalizedKey, existingGame);
             
             // Index by team IDs and normalized team names
             const gDate = existingGame.dateKey || existingGame.date;
@@ -1296,7 +1300,7 @@ export function useGames(options: UseGamesOptions = {}) {
           }
         }
         
-        console.log(`[useGames] ✅ INSTANT MERGE: Added ${totalMerged} new games, merged ${totalProspectsAdded} prospects into ${totalDuplicates} existing games for ${prospectName}`);
+        console.log(`[useGames] ✅ INSTANT MERGE: Added ${gamesAdded} new games, merged prospects into ${gamesMerged} existing games for ${prospectName}`);
         
         // CRITICAL: Create a completely new GamesByDate object to ensure React detects the change
         // Also add version timestamps to all games to force React.memo to detect changes

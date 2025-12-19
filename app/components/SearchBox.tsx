@@ -225,7 +225,8 @@ export default function SearchBox({
     if (active < 0) return;
     const result = results[active];
     if (!result) return;
-    const key = `${result.type}-${result.item.canon}`;
+    const itemKey = result.type === 'watchlist_player' ? result.item.id : result.item.canon;
+    const key = `${result.type}-${itemKey}`;
     const cur = itemRefs.current[key];
     cur?.scrollIntoView({ block: 'nearest' });
   }, [active, results]);
@@ -369,10 +370,9 @@ export default function SearchBox({
             return (
               <button
                 key={key}
-                ref={(el) => (itemRefs.current[key] = el)}
+                ref={(el) => { itemRefs.current[key] = el; }}
                 role="option"
                 aria-selected={isActive}
-                onMouseEnter={() => setActive(i)}
                 onMouseDown={(e) => e.preventDefault()} // prevent input blur before click
                 onClick={() => {
                   if (r.type === 'team') {
@@ -398,6 +398,7 @@ export default function SearchBox({
                 }`}
                 style={isActive ? { backgroundColor: 'rgba(138, 43, 226, 0.1)', borderLeft: '3px solid var(--accent)' } : { backgroundColor: 'transparent' }}
                 onMouseEnter={(e) => {
+                  setActive(i);
                   if (!isActive) {
                     e.currentTarget.style.backgroundColor = 'rgba(148, 163, 184, 0.08)';
                   }

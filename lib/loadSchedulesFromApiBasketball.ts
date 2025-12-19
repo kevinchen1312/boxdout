@@ -109,7 +109,7 @@ const TEAM_ID_MAPPINGS: Record<string, {
  */
 function getLeagueSeasonFormat(leagueId: number): 'YYYY' | 'YYYY-YYYY' | undefined {
   const league = SUPPORTED_LEAGUES.find(l => l.id === leagueId);
-  return league?.seasonFormat;
+  return league?.seasonFormat as 'YYYY' | 'YYYY-YYYY' | undefined;
 }
 
 // Supported leagues for api-basketball with season formats
@@ -686,7 +686,7 @@ export async function fetchProspectScheduleFromApiBasketball(
       normalizedName.includes(key) || key.includes(normalizedName)
     )?.[1];
   
-  const leagueIds = teamMapping?.leagueIds || (teamMapping?.leagueId ? [teamMapping.leagueId] : undefined);
+  const leagueIds = teamMapping?.leagueIds;
   const leagueName = teamMapping?.leagueName || 'Unknown';
   const baseTeamId = teamMapping?.teamId || teamId; // Use mapping team ID if available, otherwise use discovered teamId
   const lnbTeamId = teamMapping?.lnbTeamId; // Separate team ID for LNB Pro A
@@ -1029,9 +1029,11 @@ export async function fetchProspectScheduleFromApiBasketball(
       if (entry) {
         console.log(`[API-Basketball] ✓ Converted game: ${entry.game.dateKey} ${entry.game.tipoff} - ${entry.game.homeTeam.displayName} vs ${entry.game.awayTeam.displayName}`);
         // Apply injury status for this specific game
-        const injuryStatus = await getInjuryStatusForGame(prospect, entry.game.id, entry.game.dateKey);
-        if (injuryStatus) {
-          entry.prospect.injuryStatus = injuryStatus;
+        if (entry.game.id && entry.game.dateKey) {
+          const injuryStatus = await getInjuryStatusForGame(prospect, entry.game.id, entry.game.dateKey);
+          if (injuryStatus) {
+            entry.prospect.injuryStatus = injuryStatus;
+          }
         }
         entries.push(entry);
       } else {

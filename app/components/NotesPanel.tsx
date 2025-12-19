@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { GameWithProspects } from '../utils/gameMatching';
 import { format, parseISO } from 'date-fns';
 import { useUser } from '@clerk/nextjs';
@@ -12,6 +12,9 @@ interface NotesPanelProps {
   onNoteSaved?: () => void;
   sidebarMode?: boolean; // When true, display as sidebar instead of overlay
 }
+
+// Helper to get draft key for localStorage
+const getDraftKey = (gameId: string) => `note_draft_${gameId}`;
 
 interface Note {
   id: string;
@@ -44,6 +47,43 @@ export default function NotesPanel({ game, isOpen, onClose, onNoteSaved, sidebar
   const [notes, setNotes] = useState<Note[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const { isSignedIn } = useUser();
+
+  // Load draft from localStorage when panel opens
+  useEffect(() => {
+    if (isOpen && game) {
+      const draftKey = getDraftKey(game.id);
+      const savedDraft = localStorage.getItem(draftKey);
+      if (savedDraft) {
+        try {
+          const draft = JSON.parse(savedDraft);
+          setContent(draft.content || '');
+          setVisibility(draft.visibility || 'self');
+          setSelectedGroupId(draft.selectedGroupId || null);
+        } catch {
+          // Invalid draft, ignore
+        }
+      }
+    }
+  }, [isOpen, game]);
+
+  // Auto-save draft to localStorage
+  const saveDraft = useCallback(() => {
+    if (game && content.trim()) {
+      const draftKey = getDraftKey(game.id);
+      localStorage.setItem(draftKey, JSON.stringify({
+        content,
+        visibility,
+        selectedGroupId,
+      }));
+    }
+  }, [game, content, visibility, selectedGroupId]);
+
+  // Save draft on content/visibility changes (debounced effect)
+  useEffect(() => {
+    if (!game) return;
+    const timer = setTimeout(saveDraft, 500);
+    return () => clearTimeout(timer);
+  }, [content, visibility, selectedGroupId, saveDraft, game]);
 
   // Load notes and groups when panel opens
   useEffect(() => {
@@ -99,6 +139,10 @@ export default function NotesPanel({ game, isOpen, onClose, onNoteSaved, sidebar
       });
 
       if (response.ok) {
+        // Clear draft from localStorage
+        const draftKey = getDraftKey(game.id);
+        localStorage.removeItem(draftKey);
+        
         setContent('');
         setVisibility('self');
         setSelectedGroupId(null);
@@ -130,7 +174,7 @@ export default function NotesPanel({ game, isOpen, onClose, onNoteSaved, sidebar
   };
 
   const handleClose = () => {
-    setContent('');
+    // Don't clear content - draft is auto-saved to localStorage
     onClose();
   };
 
@@ -144,25 +188,10 @@ export default function NotesPanel({ game, isOpen, onClose, onNoteSaved, sidebar
   // Panel content
   const panelContent = (
     <>
-      {/* Header */}
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex-1">
-          <h2 className="panel-title text-xl font-semibold mb-2">Game Notes</h2>
-          <div className="meta-text text-sm">
-            <div className="font-medium" style={{ color: 'var(--text-primary)' }}>{awayTeam} at {homeTeam}</div>
-            <div>{gameDate}</div>
-          </div>
-        </div>
-        <button
-          onClick={handleClose}
-          className="icon-button"
-          aria-label="Close panel"
-          style={{ color: 'var(--text-meta)' }}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-          </svg>
-        </button>
+      {/* Header - Just teams and date */}
+      <div className="mb-4">
+        <div className="font-medium" style={{ color: 'var(--text-primary)' }}>{awayTeam} at {homeTeam}</div>
+        <div className="meta-text text-sm">{gameDate}</div>
       </div>
 
       {!isSignedIn ? (
@@ -205,45 +234,57 @@ export default function NotesPanel({ game, isOpen, onClose, onNoteSaved, sidebar
           {/* Note Editor Form Section */}
           <div className="notes-form-section">
             <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-primary)' }}>
-                Add New Note
-              </label>
               <textarea
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 placeholder="Write your thoughts about this game..."
                 className="app-textarea w-full px-3 py-2 resize-none"
-                rows={6}
+                rows={5}
               />
             </div>
 
-            {/* Visibility Controls */}
-            <div>
-              <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-primary)' }}>
+            {/* Row 1: Visibility label + Save Note button */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px' }}>
+              <label className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
                 Visibility
               </label>
+              <button
+                onClick={handleSave}
+                disabled={isSaving || !content.trim() || (visibility === 'group' && !selectedGroupId)}
+                className="app-button-primary px-4 py-1.5 text-sm font-medium"
+              >
+                {isSaving ? 'Saving...' : 'Save Note'}
+              </button>
+            </div>
+
+            {/* Row 2: Visibility dropdown + Close button */}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px' }}>
               <select
                 value={visibility}
                 onChange={(e) => setVisibility(e.target.value as 'self' | 'friends' | 'group' | 'public')}
-                className="app-select w-full px-3 py-2"
+                className="app-select px-2 py-1.5"
+                style={{ flex: 1 }}
               >
                 <option value="self">Only Me</option>
                 <option value="friends">Friends</option>
                 <option value="group">Groups</option>
                 <option value="public">Public</option>
               </select>
+              <button
+                onClick={handleClose}
+                className="app-button px-4 py-1.5 text-sm font-medium"
+              >
+                Close
+              </button>
             </div>
 
             {/* Group Selector */}
             {visibility === 'group' && (
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-primary)' }}>
-                  Select Group
-                </label>
+              <div style={{ marginTop: '8px' }}>
                 <select
                   value={selectedGroupId || ''}
                   onChange={(e) => setSelectedGroupId(e.target.value || null)}
-                  className="app-select w-full px-3 py-2"
+                  className="app-select w-full px-2 py-1.5"
                 >
                   <option value="">Select a group...</option>
                   {groups.map(group => (
@@ -259,23 +300,6 @@ export default function NotesPanel({ game, isOpen, onClose, onNoteSaved, sidebar
                 )}
               </div>
             )}
-          </div>
-
-          {/* Action Buttons Footer */}
-          <div className="notes-footer">
-            <button
-              onClick={handleSave}
-              disabled={isSaving || !content.trim() || (visibility === 'group' && !selectedGroupId)}
-              className="app-button-primary px-4 py-2 font-medium"
-            >
-              {isSaving ? 'Saving...' : 'Save Note'}
-            </button>
-            <button
-              onClick={handleClose}
-              className="app-button px-4 py-2 font-medium"
-            >
-              Close
-            </button>
           </div>
 
           {/* Other Users' Notes */}

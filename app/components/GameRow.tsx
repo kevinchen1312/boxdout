@@ -6,6 +6,6 @@ import GameCard from './GameCard';
 
 export type RankingSource = 'espn' | 'myboard';
 
-export default function GameRow({ game, rankingSource = 'espn', onOpenNotes, watched, hasNote }: { game: GameWithProspects; rankingSource?: RankingSource; onOpenNotes?: (game: GameWithProspects) => void; watched?: boolean; hasNote?: boolean }) {
-  return <GameCard game={game} rankingSource={rankingSource} onOpenNotes={onOpenNotes} watched={watched} hasNote={hasNote} />;
+export default function GameRow({ game, rankingSource = 'espn', watched, hasNote }: { game: GameWithProspects; rankingSource?: RankingSource; watched?: boolean; hasNote?: boolean }) {
+  return <GameCard game={game} rankingSource={rankingSource} watched={watched} hasNote={hasNote} />;
 }

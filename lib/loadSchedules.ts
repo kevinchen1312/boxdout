@@ -2452,7 +2452,7 @@ const loadInternationalRosterGames = async (
       if (existing) {
         // Merge team rankings (add any new prospects for this team)
         for (const ranking of teamRankings) {
-          if (!existing.teamRankings.some((r: any) => r.prospects.id === ranking.prospects.id)) {
+          if (!existing.teamRankings.some((r: any) => r.prospects?.id === (ranking as any).prospects?.id)) {
             existing.teamRankings.push(ranking);
           }
         }
@@ -2533,9 +2533,8 @@ const loadInternationalRosterGames = async (
       
       const game: AggregatedGameInternal = {
         id: gameData.game_id,
-        key,
+        gameKey: key,
         date: fullISODate, // Full ISO timestamp for client-side sorting
-        time: isoTime,
         sortTimestamp,
         tipoff: tipoffInET, // Tipoff in ET for consistency with NCAA games
         homeTeam: {
@@ -2550,11 +2549,7 @@ const loadInternationalRosterGames = async (
           displayName: gameData.away_team_name,
           logo: gameData.away_team_logo || undefined,
         },
-        homeScore: gameData.home_score,
-        awayScore: gameData.away_score,
         status: gameData.status || 'Scheduled',
-        isFinal: gameData.status?.toLowerCase().includes('finish') || false,
-        isNeutral: gameData.location_type === 'neutral',
         venue: gameData.venue || undefined,
         prospects: [prospect],
         homeProspects: prospectSide === 'home' ? [prospect] : [],
@@ -4429,6 +4424,11 @@ const buildSchedules = async (
         filteredHomeProspects.map(p => `${p.name} (#${p.rank}, watchlist: ${p.isWatchlist || false}) - team: "${p.team || p.teamDisplay || p.espnTeamName || 'N/A'}"`));
       console.log(`[Enrichment]   Current game prospects before enrichment:`, game.prospects.map(p => `${p.name} (#${p.rank}, watchlist: ${p.isWatchlist || false})`));
     }
+    // Ensure Sets are initialized
+    if (!game._prospectIds) game._prospectIds = new Set();
+    if (!game._homeProspectIds) game._homeProspectIds = new Set();
+    if (!game._awayProspectIds) game._awayProspectIds = new Set();
+    
     for (const prospect of filteredHomeProspects) {
       // Use prospect ID (name+team) for deduplication instead of rank
       // This prevents conflicts when watchlist and big board prospects have overlapping ranks

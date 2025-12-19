@@ -204,7 +204,7 @@ export const loadCustomPlayers = async (clerkUserId: string): Promise<Prospect[]
       return [];
     }
 
-    return data.map((cp) => ({
+    return data.map((cp: { rank: number; name: string; position: string; team: string; class?: string; height?: string; jersey?: string; team_id?: string }) => ({
       rank: cp.rank,
       name: cp.name,
       position: cp.position,

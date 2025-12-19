@@ -473,10 +473,12 @@ export async function fetchAndStoreProspectGames(
     }
 
     // Insert new games (no need for upsert since we deleted old ones)
-    const { error: insertError, count } = await supabaseAdmin
+    const { error: insertError } = await supabaseAdmin
       .from('prospect_games')
       .insert(gamesToInsert)
-      .select('game_id', { count: 'exact', head: true });
+      .select('game_id');
+    
+    const count = gamesToInsert.length;
 
     if (insertError) {
       console.error(`[fetchAndStoreProspectGames] Error storing prospect games for prospect ${prospectId}:`, {

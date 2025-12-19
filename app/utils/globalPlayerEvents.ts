@@ -141,7 +141,7 @@ async function addPlayerGames(playerId: string, playerName: string, playerTeam: 
     
     // First, try to get the team ID from the player ID (format: "name|team")
     // We need to look up the ESPN team ID from the database
-    let teamId: string | null = null;
+    let teamId: string | undefined = undefined;
     
     // Try to find team ID by searching existing cached games for this team
     const cacheKey = `games_all_${source}`;

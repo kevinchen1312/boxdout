@@ -131,7 +131,7 @@ export async function scrape(page: Page, teamLabel: string): Promise<Row[]> {
           // Look ahead more chars to capture full opponent name, but stop at next game
           const nextGameMatch = sectionText.substring(gameStart + 20).match(/\d{1,2}\s+(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s*-\s*\d{1,2}:/);
           const gameEnd = nextGameMatch 
-            ? gameStart + 20 + nextGameMatch.index 
+            ? gameStart + 20 + (nextGameMatch.index ?? 0)
             : Math.min(gameStart + 300, sectionText.length);
           const gameText = sectionText.substring(gameStart, gameEnd);
           

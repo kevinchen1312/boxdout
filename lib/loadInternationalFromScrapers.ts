@@ -1,6 +1,7 @@
 // Integration with existing Playwright scrapers for international leagues
 // Uses dynamic imports to avoid webpack issues with Playwright
 
+import type { Route } from 'playwright';
 import type { Prospect } from '@/app/types/prospect';
 import type {
   ParsedScheduleEntry,
@@ -234,7 +235,7 @@ export async function fetchInternationalSchedule(
     page.setDefaultTimeout(30000); // 30 seconds per operation
     
     // Block heavy assets
-    await page.route('**/*', (route) => {
+    await page.route('**/*', (route: Route) => {
       const url = route.request().url();
       const resourceType = route.request().resourceType();
       
@@ -358,9 +359,11 @@ export async function fetchInternationalSchedule(
         const entry = await convertRowToEntry(row, prospect, teamDisplay, directory, config.leagues);
         if (entry) {
           // Apply injury status for this specific game
-          const injuryStatus = await getInjuryStatusForGame(prospect, entry.game.id, entry.game.dateKey);
-          if (injuryStatus) {
-            entry.prospect.injuryStatus = injuryStatus;
+          if (entry.game.id && entry.game.dateKey) {
+            const injuryStatus = await getInjuryStatusForGame(prospect, entry.game.id, entry.game.dateKey);
+            if (injuryStatus) {
+              entry.prospect.injuryStatus = injuryStatus;
+            }
           }
           entries.push(entry);
         }

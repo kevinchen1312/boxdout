@@ -30,7 +30,6 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
 
 interface Prospect {
   id: string; // Unified ID - use name for big board, prospects.id for watchlist
@@ -39,6 +38,7 @@ interface Prospect {
   name: string;
   position: string;
   team: string;
+  teamDisplay?: string;
   class?: string;
   isWatchlist?: boolean;
   // For watchlist players, store original data for API calls
@@ -104,13 +104,12 @@ function SortableItem({ id, prospect, index, onRemove, onRankChange, onMoveToWat
     setRankInput(String(index + 1));
   }, [index]);
 
-  const baseTransform = CSS.Transform.toString(transform);
+  // Use only translate transform (no scale/rotation) to keep items horizontal during drag
   const style = {
-    transform: isDragging ? `${baseTransform} rotate(2deg)` : baseTransform,
-    transition: isDragging ? 'none' : transition,
+    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+    transition,
     touchAction: 'none',
-    opacity: isDragging ? 0.9 : 1,
-    boxShadow: isDragging ? '0 8px 16px rgba(0,0,0,0.2)' : undefined,
+    opacity: isDragging ? 0.5 : 1,
   };
 
   // Close menu when clicking outside
@@ -390,13 +389,12 @@ function WatchlistItem({ prospect, index, onRemove, onWatchlistAction, watchlist
     setRankInput(String(index + 1));
   }, [index]);
 
-  const baseTransform = CSS.Transform.toString(transform);
+  // Use only translate transform (no scale/rotation) to keep items horizontal during drag
   const style = {
-    transform: isDragging ? `${baseTransform} rotate(2deg)` : baseTransform,
-    transition: isDragging ? 'none' : transition,
+    transform: transform ? `translate3d(${transform.x}px, ${transform.y}px, 0)` : undefined,
+    transition,
     touchAction: 'none',
-    opacity: isDragging ? 0.9 : 1,
-    boxShadow: isDragging ? '0 8px 16px rgba(0,0,0,0.2)' : undefined,
+    opacity: isDragging ? 0.5 : 1,
   };
 
   // Close menu when clicking outside
@@ -1023,7 +1021,7 @@ export default function RankingsPage() {
         id: p.id || p.name, // Use name as id for ESPN prospects
       }));
       
-      console.log(`[Rankings] API returned ${source} rankings: ${processedProspects.length} prospects, top 3:`, processedProspects.slice(0, 3).map(p => p.name));
+      console.log(`[Rankings] API returned ${source} rankings: ${processedProspects.length} prospects, top 3:`, processedProspects.slice(0, 3).map((p: Prospect) => p.name));
       
       setBigBoardProspects(processedProspects);
       
@@ -1102,20 +1100,20 @@ export default function RankingsPage() {
       // Merge database watchlist with local watchlist (preserve locally moved prospects)
       setWatchlistProspects((prevWatchlist) => {
         const dbProspects = imported.map(importedProspectToProspect);
-        const dbIds = new Set(dbProspects.map((p) => p.id));
+        const dbIds = new Set(dbProspects.map((p: Prospect) => p.id));
         
-        console.log('[loadUserRankings] DB prospects:', dbProspects.length, dbProspects.map(p => p.name));
-        console.log('[loadUserRankings] Previous watchlist:', prevWatchlist.length, prevWatchlist.map(p => p.name));
+        console.log('[loadUserRankings] DB prospects:', dbProspects.length, dbProspects.map((p: Prospect) => p.name));
+        console.log('[loadUserRankings] Previous watchlist:', prevWatchlist.length, prevWatchlist.map((p: Prospect) => p.name));
         
         // Keep locally moved prospects that aren't in database yet
-        const localOnly = prevWatchlist.filter((p) => !dbIds.has(p.id));
+        const localOnly = prevWatchlist.filter((p: Prospect) => !dbIds.has(p.id));
         
-        console.log('[loadUserRankings] Local-only prospects:', localOnly.length, localOnly.map(p => p.name));
+        console.log('[loadUserRankings] Local-only prospects:', localOnly.length, localOnly.map((p: Prospect) => p.name));
         
         // Combine: database prospects + local-only prospects
         const merged = [...dbProspects, ...localOnly];
-        const result = merged.map((p, i) => ({ ...p, watchlistRank: i + 1 }));
-        console.log('[loadUserRankings] Merged watchlist:', result.length, result.map(p => p.name));
+        const result = merged.map((p: Prospect, i: number) => ({ ...p, watchlistRank: i + 1 }));
+        console.log('[loadUserRankings] Merged watchlist:', result.length, result.map((p: Prospect) => p.name));
         
         // Cache the watchlist for instant loading on next visit
         setCachedData('rankings_watchlist', result, 5 * 60 * 1000);
@@ -1650,7 +1648,7 @@ export default function RankingsPage() {
             disabled={saving}
             className="px-6 py-2 font-medium"
           >
-            Reset to ESPN
+            Reset to Default
           </Button>
           {isSignedIn && (
             <Button
@@ -1660,29 +1658,6 @@ export default function RankingsPage() {
               {showAddForm ? 'Cancel Add Player' : 'Add Custom Player'}
             </Button>
           )}
-          <button
-            className="app-button-ghost"
-            onClick={() => {
-              const newValue = !useMyBoard;
-              
-              // Try to load cached data for the new source immediately
-              const newSource = newValue ? 'myboard' : 'espn';
-              const cacheKey = `rankings_${newSource}`;
-              const cachedData = getStaleCachedData<Prospect[]>(cacheKey);
-              
-              if (cachedData && cachedData.length > 0) {
-                console.log(`[Rankings] Instant switch to ${newSource} using cached data: ${cachedData.length} prospects`);
-                setBigBoardProspects(cachedData);
-              }
-              
-              setUseMyBoard(newValue);
-              localStorage.setItem('useMyBoard', String(newValue));
-              setSuccessMessage(newValue ? 'Switched to My Board - showing only your imported players' : 'Switched to ESPN Rankings');
-              setTimeout(() => setSuccessMessage(null), 2000);
-            }}
-          >
-            {useMyBoard ? 'Use ESPN Rankings' : 'Use My Board'}
-          </button>
         </div>
 
         {/* Add Custom Player Form */}
@@ -1794,20 +1769,6 @@ export default function RankingsPage() {
               </div>
             )}
 
-            {/* Help Text */}
-            <Card style={{ background: '#eff6ff', borderColor: '#bfdbfe' }}>
-              <h3 className="font-semibold mb-2" style={{ color: '#1e3a8a' }}>How to use:</h3>
-              <ul className="text-sm space-y-1" style={{ color: '#1e40af' }}>
-                <li>• Drag the handle (☰) or change the rank number to reorder prospects on the big board</li>
-                <li>• Drag players between the big board and watchlist in either direction</li>
-                <li>• Drag within the watchlist to reorder watchlist items</li>
-                <li>• Use the rank input on watchlist items to reorder within watchlist or set target rank for big board</li>
-                <li>• Use the 3-dot menu (⋮) on big board items to move to watchlist or remove them</li>
-                <li>• Click "Save Changes" to persist your rankings</li>
-                <li>• Use "Reset to ESPN" to restore the original ESPN rankings</li>
-                <li>• Toggle between ESPN and your board on the main calendar page</li>
-              </ul>
-            </Card>
           </div>
 
           {/* Right Column: Watchlist */}
@@ -1901,7 +1862,7 @@ export default function RankingsPage() {
                 const watchlistItem = watchlistProspects.find(p => p.id === prospectId);
                 if (watchlistItem) {
                   return (
-                    <div className="rankings-row" style={{ opacity: 0.9, transform: 'rotate(2deg)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' }}>
+                    <div className="rankings-row" style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
                       <div className="flex-shrink-0 flex items-center justify-center w-10 h-10" style={{ color: 'var(--text-secondary)' }}>
                         <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
                           <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
@@ -1927,7 +1888,7 @@ export default function RankingsPage() {
                 if (prospect) {
                   const index = bigBoardProspects.findIndex(p => p.id === activeId);
                   return (
-                    <div className="rankings-row" style={{ opacity: 0.9, transform: 'rotate(2deg)', boxShadow: '0 8px 16px rgba(0,0,0,0.2)' }}>
+                    <div className="rankings-row" style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
                       <div className="flex-shrink-0 flex items-center justify-center w-10 h-10" style={{ color: 'var(--text-secondary)' }}>
                         <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
                           <path d="M3 5h14M3 10h14M3 15h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />

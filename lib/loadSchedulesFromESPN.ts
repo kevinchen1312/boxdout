@@ -31,6 +31,8 @@ interface ESPNEvent {
         detail: string;
         shortDetail: string;
       };
+      displayClock?: string;
+      period?: number;
     };
     competitors?: Array<{
       id: string;
@@ -84,7 +86,7 @@ export function clearESPNScheduleCache() {
 }
 
 // Format time from ESPN API response
-const formatTimeFromESPN = (eventDate: string, status?: ESPNEvent['competitions'][0]['status']): { timeStr: string; sortTimestamp: number | null; isoTime: string; status: string } => {
+const formatTimeFromESPN = (eventDate: string, status?: { type?: { state?: string; name?: string; description?: string; shortDetail?: string } }): { timeStr: string; sortTimestamp: number | null; isoTime: string; status: string } => {
   const date = new Date(eventDate);
   
   // Check game state

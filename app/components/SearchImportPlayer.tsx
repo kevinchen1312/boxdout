@@ -26,7 +26,7 @@ interface SearchImportPlayerProps {
 }
 
 export default function SearchImportPlayer({ onPlayerImported, existingRankings = [] }: SearchImportPlayerProps) {
-  const { userId } = useUser();
+  const { user } = useUser();
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<ExternalProspectResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);

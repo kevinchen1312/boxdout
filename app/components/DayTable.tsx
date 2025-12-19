@@ -4,7 +4,7 @@ import React, { memo } from 'react';
 import { format } from 'date-fns';
 import { localYMD } from '../utils/dateKey';
 import type { GameWithProspects } from '../utils/gameMatching';
-import GameRow from './GameRow';
+import GameCardWithPanel from './GameCardWithPanel';
 
 export type RankingSource = 'espn' | 'myboard';
 
@@ -12,11 +12,10 @@ interface DayTableProps {
   date: Date;
   games: GameWithProspects[];
   rankingSource?: RankingSource;
-  onOpenNotes?: (game: GameWithProspects) => void;
   gameStatuses?: Map<string, { watched: boolean; hasNote: boolean }>;
 }
 
-const DayTable = memo(function DayTable({ date, games, rankingSource = 'espn', onOpenNotes, gameStatuses }: DayTableProps) {
+const DayTable = memo(function DayTable({ date, games, rankingSource = 'espn', gameStatuses }: DayTableProps) {
   const dateKey = localYMD(date);
   const isToday = dateKey === localYMD(new Date());
 
@@ -40,11 +39,10 @@ const DayTable = memo(function DayTable({ date, games, rankingSource = 'espn', o
           {games.map((game) => {
             const status = gameStatuses?.get(game.id);
             return (
-              <GameRow 
-                key={game.id} 
-                game={game} 
-                rankingSource={rankingSource} 
-                onOpenNotes={onOpenNotes}
+              <GameCardWithPanel
+                key={game.id}
+                game={game}
+                rankingSource={rankingSource}
                 watched={status?.watched}
                 hasNote={status?.hasNote}
               />
@@ -61,4 +59,3 @@ const DayTable = memo(function DayTable({ date, games, rankingSource = 'espn', o
 });
 
 export default DayTable;
-

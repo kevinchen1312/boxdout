@@ -12,9 +12,8 @@ interface TeamScheduleProps {
   team: string;
   gamesByDate: Record<string, GameWithProspects[]>;
   parseLocalYMD: (s: string) => Date;
-  DayTable: React.ComponentType<{ date: Date; games: GameWithProspects[]; rankingSource?: RankingSource; onOpenNotes?: (game: GameWithProspects) => void; gameStatuses?: Map<string, { watched: boolean; hasNote: boolean }> }>;
+  DayTable: React.ComponentType<{ date: Date; games: GameWithProspects[]; rankingSource?: RankingSource; gameStatuses?: Map<string, { watched: boolean; hasNote: boolean }> }>;
   rankingSource?: RankingSource;
-  onOpenNotes?: (game: GameWithProspects) => void;
   gameStatuses?: Map<string, { watched: boolean; hasNote: boolean }>;
 }
 
@@ -24,7 +23,6 @@ export default function TeamSchedule({
   parseLocalYMD,
   DayTable: DayTableComponent,
   rankingSource = 'espn',
-  onOpenNotes,
   gameStatuses,
 }: TeamScheduleProps) {
   // Normalize the search team name for matching
@@ -84,10 +82,15 @@ export default function TeamSchedule({
         <div className="text-sm text-neutral-600 px-2 py-3">No games found for {team}.</div>
       ) : (
         keys.map((dk) => (
-          <DayTableComponent key={dk} date={parseLocalYMD(dk)} games={grouped[dk]} rankingSource={rankingSource} onOpenNotes={onOpenNotes} gameStatuses={gameStatuses} />
+          <DayTableComponent 
+            key={dk} 
+            date={parseLocalYMD(dk)} 
+            games={grouped[dk]} 
+            rankingSource={rankingSource} 
+            gameStatuses={gameStatuses}
+          />
         ))
       )}
     </section>
   );
 }
-

@@ -11,8 +11,6 @@ import SearchOverlay from './components/SearchOverlay';
 import SearchBox from './components/SearchBox';
 import TeamSchedule from './components/TeamSchedule';
 import DayTable from './components/DayTable';
-import NotesPanel from './components/NotesPanel';
-import FriendActivity from './components/FriendActivity';
 import { useGames, type RankingSource } from './hooks/useGames';
 import type { GameWithProspects } from './utils/gameMatching';
 import { format } from 'date-fns';
@@ -87,12 +85,6 @@ export default function Home() {
     setSourceReady(true);
   }, []);
 
-  // Toggle ranking source
-  const handleToggleRankingSource = () => {
-    const newSource: RankingSource = rankingSource === 'espn' ? 'myboard' : 'espn';
-    setRankingSource(newSource);
-    localStorage.setItem('useMyBoard', newSource === 'myboard' ? 'true' : 'false');
-  };
   
   const { games, loading, error, loadingMessage, updating, fetchGames, refresh, updateProspectRanks } = useGames({ source: rankingSource, ready: sourceReady });
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null);
@@ -101,9 +93,9 @@ export default function Home() {
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [selectedProspect, setSelectedProspect] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [notesPanelGame, setNotesPanelGame] = useState<GameWithProspects | null>(null);
   const [gameStatuses, setGameStatuses] = useState<Map<string, { watched: boolean; hasNote: boolean }>>(new Map());
   const dateRangeRef = useRef<{ start: string; end: string } | null>(null);
+  const mainContentRef = useRef<HTMLDivElement | null>(null);
   
   // Additional games fetched from database for watchlist players
   const [additionalTeamGames, setAdditionalTeamGames] = useState<Record<string, GameWithProspects[]>>({});
@@ -288,7 +280,8 @@ export default function Home() {
             team: tracked.team,
             teamDisplay: tracked.teamDisplay,
             teamId: tracked.teamId,
-            rank: tracked.rank,
+            rank: tracked.rank ?? 999,
+            position: '',
             isWatchlist: tracked.type === 'watchlist',
           };
 
@@ -1000,24 +993,16 @@ export default function Home() {
           {/* Top row: Title and controls */}
           <div className="planner-header">
             <h1 className="page-title text-2xl md:text-3xl">
-              Prospect Game Planner
+              boxdout
             </h1>
             <nav className="planner-nav">
-              {/* Toggle ranking source */}
-              <button
-                onClick={handleToggleRankingSource}
-                className={`planner-tab ${rankingSource === 'myboard' ? 'planner-tab--active' : ''}`}
-                title={`Currently using ${rankingSource === 'espn' ? 'ESPN Rankings' : 'My Board'}. Click to switch.`}
-              >
-                {rankingSource === 'espn' ? 'ESPN Rankings' : 'My Board'}
-              </button>
               {/* Link to Rankings Editor */}
               <Link
                 href="/rankings"
                 className="planner-tab"
                 title="Edit your custom rankings"
               >
-                Edit Rankings
+                My Rankings
               </Link>
               {/* Profile/Auth Buttons */}
               {isSignedIn ? (
@@ -1028,6 +1013,13 @@ export default function Home() {
                     title="View your notes"
                   >
                     My Notes
+                  </Link>
+                  <Link
+                    href="/network"
+                    className="planner-tab"
+                    title="View your network"
+                  >
+                    My Network
                   </Link>
                   <Link
                     href="/profile"
@@ -1051,31 +1043,35 @@ export default function Home() {
           </div>
           
           {/* Second row: View mode controls */}
-          <div className="flex items-center gap-3 flex-1 justify-center max-w-2xl">
+          <div className="flex items-center gap-3 max-w-[1010px] mx-auto">
             {viewMode === 'day' && (
               <>
-                <WeekDatePicker selectedDate={selectedDate} onSelectDate={setSelectedDate} />
-                <SearchBox
-                  allGamesFull={allGames}
-                  onPickTeam={(t) => {
-                    setSelectedProspect(null);
-                    setViewMode('team');
-                    setSelectedTeam(t.label);
+                <div className="flex-1">
+                  <WeekDatePicker selectedDate={selectedDate} onSelectDate={setSelectedDate} />
+                </div>
+                <div className="ml-auto" style={{ marginLeft: '24px' }}>
+                  <SearchBox
+                    allGamesFull={allGames}
+                    onPickTeam={(t) => {
+                      setSelectedProspect(null);
+                      setViewMode('team');
+                      setSelectedTeam(t.label);
 
-                    const params = new URLSearchParams();
-                    params.set('team', t.label);
-                    window.history.replaceState(null, '', `?${params.toString()}`);
-                  }}
-                  onPickProspect={(p) => {
-                    setSelectedTeam(null);
-                    setViewMode('prospect');
-                    setSelectedProspect(p.label);
+                      const params = new URLSearchParams();
+                      params.set('team', t.label);
+                      window.history.replaceState(null, '', `?${params.toString()}`);
+                    }}
+                    onPickProspect={(p) => {
+                      setSelectedTeam(null);
+                      setViewMode('prospect');
+                      setSelectedProspect(p.label);
 
-                    const params = new URLSearchParams();
-                    params.set('prospect', p.label);
-                    window.history.replaceState(null, '', `?${params.toString()}`);
-                  }}
-                />
+                      const params = new URLSearchParams();
+                      params.set('prospect', p.label);
+                      window.history.replaceState(null, '', `?${params.toString()}`);
+                    }}
+                  />
+                </div>
               </>
             )}
             {(viewMode === 'team' || viewMode === 'prospect') && (
@@ -1112,19 +1108,9 @@ export default function Home() {
           </div>
         )}
 
-        {/* 3-Column Layout: Friend Activity | Main Content | Notes Panel */}
-        <div className="prospect-planner-layout planner-layout">
-          {/* Left Sidebar: Friend Activity */}
-          {isSignedIn ? (
-            <div className="min-w-0 planner-panel">
-              <FriendActivity games={allGamesById} />
-            </div>
-          ) : (
-            <div className="min-w-0"></div>
-          )}
-
-          {/* Main Content */}
-          <div className="min-w-0 overflow-hidden planner-panel">
+        {/* Main Content - Games with integrated social panels */}
+        <div className="w-full">
+          <div ref={mainContentRef} className="min-w-0 overflow-hidden">
           {loading && !Object.keys(games).length ? (
             <LoadingSkeleton message={loadingMessage} />
           ) : (
@@ -1135,25 +1121,23 @@ export default function Home() {
                   onDateChange={handleDateChange} 
                   selectedDate={selectedDate} 
                   rankingSource={rankingSource}
-                  onOpenNotes={setNotesPanelGame}
                   gameStatuses={gameStatuses}
                 />
               )}
               {viewMode === 'team' && selectedTeam && (
-                <div className="w-full max-w-5xl mx-auto">
+                <div className="w-full">
                   <TeamSchedule
                     team={selectedTeam}
                     gamesByDate={games}
                     parseLocalYMD={parseLocalYMD}
                     DayTable={DayTable}
                     rankingSource={rankingSource}
-                    onOpenNotes={setNotesPanelGame}
                     gameStatuses={gameStatuses}
                   />
                 </div>
               )}
               {viewMode === 'prospect' && selectedProspect && (
-                <div className="w-full max-w-5xl mx-auto">
+                <div className="w-full">
                   <section>
                     <div className="panel-title date-header" style={{ border: 'none' }}>
                       {selectedProspect} — Matchups ({gamesForProspect.length})
@@ -1179,7 +1163,6 @@ export default function Home() {
                               date={parseLocalYMD(dk)} 
                               games={grouped[dk]} 
                               rankingSource={rankingSource}
-                              onOpenNotes={setNotesPanelGame}
                               gameStatuses={gameStatuses}
                             />
                           ));
@@ -1207,26 +1190,8 @@ export default function Home() {
             </>
           )}
           </div>
-          {/* End Main Content */}
-
-          {/* Right Sidebar: Notes Panel */}
-          {notesPanelGame ? (
-            <div className="notes-panel-wrapper min-w-0 overflow-hidden planner-panel">
-              <NotesPanel
-                game={notesPanelGame}
-                isOpen={true}
-                onClose={() => setNotesPanelGame(null)}
-                onNoteSaved={() => {
-                  // Optionally refresh data or update UI after note is saved
-                }}
-                sidebarMode={true}
-              />
-            </div>
-          ) : (
-            <div className="min-w-0"></div>
-          )}
         </div>
-        {/* End 3-Column Layout */}
+        {/* End Main Content */}
 
         <SearchOverlay
           open={searchOpen}

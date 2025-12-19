@@ -150,10 +150,12 @@ export async function fetchAndStoreInternationalProspectGames(
     }));
 
     // Insert new games
-    const { error: insertError, count } = await supabaseAdmin
+    const { error: insertError } = await supabaseAdmin
       .from('prospect_games')
       .insert(gamesToInsert)
-      .select('game_id', { count: 'exact', head: true });
+      .select('game_id');
+    
+    const count = gamesToInsert.length;
 
     if (insertError) {
       console.error(`[fetchInternationalProspectGames] Error storing prospect games for prospect ${prospectId}:`, {
