@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
       }
 
       // Dev-only stub for testing
-      if (!local?.length && q.toLowerCase().includes('lee dort')) {
+      if (!cachedPlayers?.length && q.toLowerCase().includes('lee dort')) {
         console.log(`[search-external] Using dev stub for "lee dort"`);
         return NextResponse.json<SearchExternalResponse>({
           results: [
