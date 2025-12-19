@@ -501,11 +501,12 @@ export async function POST(request: NextRequest) {
     }
 
     // 2. Check if prospect is already in user's rankings
+    // At this point, prospect is guaranteed to be non-null (either found or inserted above)
     const { data: existingRanking, error: rankingCheckError } = await supabaseAdmin
       .from('user_rankings')
       .select('id, rank')
       .eq('user_id', supabaseUserId)
-      .eq('prospect_id', prospect.id) // Use prospect.id (UUID), not externalId
+      .eq('prospect_id', prospect!.id) // Use prospect.id (UUID), not externalId
       .maybeSingle();
 
     if (rankingCheckError && rankingCheckError.code !== 'PGRST116') {
