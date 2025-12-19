@@ -154,21 +154,21 @@ export async function GET() {
           totalProspects: allProspects.length,
           homeProspectsCount: homeProspects.length,
           awayProspectsCount: awayProspects.length,
-          valenciaProspects: valenciaProspects.map(p => ({
+          valenciaProspects: valenciaProspects.map((p: any) => ({
             name: p.name,
             rank: p.rank,
             team: p.team || p.teamDisplay
           })),
-          opponentProspects: opponentProspects.map(p => ({
+          opponentProspects: opponentProspects.map((p: any) => ({
             name: p.name,
             rank: p.rank,
             team: p.team || p.teamDisplay
           })),
-          allProspects: allProspects.map(p => ({
+          allProspects: allProspects.map((p: any) => ({
             name: p.name,
             rank: p.rank,
             team: p.team || p.teamDisplay,
-            side: homeProspects.some(hp => hp.rank === p.rank) ? 'home' : 'away'
+            side: homeProspects.some((hp: any) => hp.rank === p.rank) ? 'home' : 'away'
           })),
           mergeStatus: {
             hasValenciaProspects: valenciaProspects.length > 0,
@@ -205,10 +205,10 @@ export async function GET() {
       console.log(`🔵     Game ID: ${game.gameId}`);
       console.log(`🔵     Team names: "${game.awayTeamName}" @ "${game.homeTeamName}"`);
       console.log(`🔵     Prospects: ${game.totalProspects} total (${game.homeProspectsCount} home, ${game.awayProspectsCount} away)`);
-      console.log(`🔵     Valencia: ${game.valenciaProspects.map(p => `${p.name} (#${p.rank})`).join(', ') || 'none'}`);
-      console.log(`🔵     Opponent: ${game.opponentProspects.map(p => `${p.name} (#${p.rank})`).join(', ') || 'none'}`);
+      console.log(`🔵     Valencia: ${game.valenciaProspects.map((p: any) => `${p.name} (#${p.rank})`).join(', ') || 'none'}`);
+      console.log(`🔵     Opponent: ${game.opponentProspects.map((p: any) => `${p.name} (#${p.rank})`).join(', ') || 'none'}`);
       if (game.totalProspects > 0) {
-        console.log(`🔵     All prospects: ${game.allProspects.map(p => `${p.name} (#${p.rank}, ${p.side}, team: "${p.team}")`).join('; ')}`);
+        console.log(`🔵     All prospects: ${game.allProspects.map((p: any) => `${p.name} (#${p.rank}, ${p.side}, team: "${p.team}")`).join('; ')}`);
       }
       if (game.mergeStatus.isMerged) {
         console.log(`🔵     ✅ MERGED: Both teams have prospects`);
