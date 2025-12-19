@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import type { Prospect } from '@/app/types/prospect';
 import { supabaseAdmin, getSupabaseUserId } from './supabase';
+import { ESPN_BIG_BOARD_RAW } from './espnBigBoard';
 
 export type RankingSource = 'espn' | 'myboard';
 
@@ -305,11 +306,26 @@ export const loadProspects = async (
   
   const filePath = path.join(process.cwd(), RANKING_FILES[source]);
 
-  if (!fs.existsSync(filePath)) {
-    throw new Error(`Big board file not found at ${filePath}`);
+  // Try to read from file first, fall back to embedded data for Vercel/serverless
+  let content: string;
+  try {
+    if (fs.existsSync(filePath)) {
+      content = fs.readFileSync(filePath, 'utf-8');
+    } else if (source === 'espn') {
+      // Use embedded ESPN big board as fallback (for Vercel deployment)
+      console.log('[loadProspects] Using embedded ESPN big board (txt file not found)');
+      content = ESPN_BIG_BOARD_RAW;
+    } else {
+      // For myboard, also fall back to ESPN big board if file not found
+      console.log('[loadProspects] Using embedded ESPN big board as fallback for myboard (txt file not found)');
+      content = ESPN_BIG_BOARD_RAW;
+    }
+  } catch (fsError) {
+    // Filesystem error (e.g., on Vercel) - use embedded data
+    console.log('[loadProspects] Filesystem error, using embedded ESPN big board:', fsError);
+    content = ESPN_BIG_BOARD_RAW;
   }
-
-  const content = fs.readFileSync(filePath, 'utf-8');
+  
   const lines = content.split(/\r?\n/);
 
   const prospects: Prospect[] = [];
@@ -395,11 +411,21 @@ export const loadProspects = async (
 // Helper to load ESPN prospects for mapping (without caching to avoid recursion)
 function loadESPNProspectsForMapping(): Prospect[] {
   const filePath = path.join(process.cwd(), RANKING_FILES.espn);
-  if (!fs.existsSync(filePath)) {
-    return [];
+  
+  // Try to read from file first, fall back to embedded data for Vercel/serverless
+  let content: string;
+  try {
+    if (fs.existsSync(filePath)) {
+      content = fs.readFileSync(filePath, 'utf-8');
+    } else {
+      // Use embedded ESPN big board as fallback
+      content = ESPN_BIG_BOARD_RAW;
+    }
+  } catch (fsError) {
+    // Filesystem error - use embedded data
+    content = ESPN_BIG_BOARD_RAW;
   }
-
-  const content = fs.readFileSync(filePath, 'utf-8');
+  
   const lines = content.split(/\r?\n/);
   const prospects: Prospect[] = [];
 
