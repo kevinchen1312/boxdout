@@ -455,20 +455,19 @@ function isDebugGame(game: { homeTeam?: { name?: string; displayName?: string };
   return DEBUG_GAMES.includes(label);
 }
 
-export function decorateGamesWithTrackedPlayers(
-  games: Array<{ 
+export function decorateGamesWithTrackedPlayers<
+  T extends { 
     id?: string;
     prospects: Prospect[]; 
     homeProspects: Prospect[]; 
     awayProspects: Prospect[];
     homeTeam?: { id?: string; name?: string; displayName?: string };
     awayTeam?: { id?: string; name?: string; displayName?: string };
-  }>,
+  }
+>(
+  games: T[],
   trackedMap: Record<string, TrackedPlayerInfo>
-): Array<{ 
-  prospects: Prospect[]; 
-  homeProspects: Prospect[]; 
-  awayProspects: Prospect[];
+): Array<T & { 
   homeTrackedPlayers: TrackedPlayerInfo[];
   awayTrackedPlayers: TrackedPlayerInfo[];
 }> {
