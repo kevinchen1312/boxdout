@@ -62,7 +62,7 @@ export async function GET() {
         const awayProspects = game.awayProspects || [];
         const allProspects = game.prospects || [];
         
-        const valenciaProspects = allProspects.filter(p => {
+        const valenciaProspects = allProspects.filter((p: any) => {
           const teamName = (p.team || p.teamDisplay || '').toLowerCase();
           return teamName.includes('valencia');
         });
@@ -130,7 +130,7 @@ export async function GET() {
         };
         
         const opponentName = isValenciaHome ? awayName : homeName;
-        const opponentProspects = allProspects.filter(p => {
+        const opponentProspects = allProspects.filter((p: any) => {
           const prospectTeamName = p.team || p.teamDisplay || '';
           if (!prospectTeamName) return false;
           
