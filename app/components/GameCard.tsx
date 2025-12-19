@@ -426,14 +426,14 @@ const GameCard = memo(function GameCard({ game, compact = false, rankingSource =
   const leftDisplayTeam: DisplayTeam = {
     id: leftTeam.id,
     name: leftTeamName,
-    logo: getVerifiedLogo(leftTeam, leftTeam.id, leftTrackedPlayers, leftGameTeamId, leftTeamName, rightTeam.logo, rightTeamName) || null,
+    logo: getVerifiedLogo(leftTeam, leftTeam.id, leftTrackedPlayers, leftGameTeamId, leftTeamName, rightTeam.logo ?? undefined, rightTeamName) || null,
     trackedPlayers: leftTrackedPlayers,
   };
   
   const rightDisplayTeam: DisplayTeam = {
     id: rightTeam.id,
     name: rightTeamName,
-    logo: getVerifiedLogo(rightTeam, rightTeam.id, rightTrackedPlayers, rightGameTeamId, rightTeamName, leftTeam.logo, leftTeamName) || null,
+    logo: getVerifiedLogo(rightTeam, rightTeam.id, rightTrackedPlayers, rightGameTeamId, rightTeamName, leftTeam.logo ?? undefined, leftTeamName) || null,
     trackedPlayers: rightTrackedPlayers,
   };
   
