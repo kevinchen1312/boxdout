@@ -148,7 +148,7 @@ export async function POST(request: NextRequest) {
     // For ESPN players, check by espn_id; for API-Basketball, check by espn_id (we store API-Basketball IDs there too)
     let { data: existingProspect, error: existingError } = await supabaseAdmin
       .from('prospects')
-      .select('id, espn_id, full_name, position, team_name, source, international_team_id')
+      .select('id, espn_id, full_name, position, team_name, source, international_team_id, espn_team_id')
       .eq('espn_id', externalId)
       .maybeSingle();
 
@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
       console.log(`[import-and-add] Not found by externalId, checking by name: "${fullName}"`);
       const { data: existingByName } = await supabaseAdmin
         .from('prospects')
-        .select('id, espn_id, full_name, position, team_name, source, international_team_id')
+        .select('id, espn_id, full_name, position, team_name, source, international_team_id, espn_team_id')
         .ilike('full_name', fullName)
         .eq('source', 'external')
         .limit(5); // Get multiple matches to find the best one
