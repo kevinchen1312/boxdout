@@ -21,9 +21,9 @@ export async function GET() {
       parisProspect as any,
       'Paris Basketball',
       directory
-    );
+    ) as any[];
     
-    const parisLnbGames = parisGames.filter(g => 
+    const parisLnbGames = parisGames.filter((g: any) => 
       g.league?.toLowerCase().includes('lnb') || 
       g.league?.toLowerCase().includes('pro a') ||
       g.league?.toLowerCase().includes('france')
@@ -43,9 +43,9 @@ export async function GET() {
       asvelProspect as any,
       'ASVEL',
       directory
-    );
+    ) as any[];
     
-    const asvelLnbGames = asvelGames.filter(g => 
+    const asvelLnbGames = asvelGames.filter((g: any) => 
       g.league?.toLowerCase().includes('lnb') || 
       g.league?.toLowerCase().includes('pro a') ||
       g.league?.toLowerCase().includes('france')
@@ -58,13 +58,13 @@ export async function GET() {
       paris: {
         totalGames: parisGames.length,
         lnbGames: parisLnbGames.length,
-        sampleGames: parisGames.slice(0, 5).map(g => ({
+        sampleGames: parisGames.slice(0, 5).map((g: any) => ({
           date: g.date,
           opponent: g.opponent,
           league: g.league,
           home: g.home,
         })),
-        lnbSampleGames: parisLnbGames.slice(0, 5).map(g => ({
+        lnbSampleGames: parisLnbGames.slice(0, 5).map((g: any) => ({
           date: g.date,
           opponent: g.opponent,
           league: g.league,
@@ -74,13 +74,13 @@ export async function GET() {
       asvel: {
         totalGames: asvelGames.length,
         lnbGames: asvelLnbGames.length,
-        sampleGames: asvelGames.slice(0, 5).map(g => ({
+        sampleGames: asvelGames.slice(0, 5).map((g: any) => ({
           date: g.date,
           opponent: g.opponent,
           league: g.league,
           home: g.home,
         })),
-        lnbSampleGames: asvelLnbGames.slice(0, 5).map(g => ({
+        lnbSampleGames: asvelLnbGames.slice(0, 5).map((g: any) => ({
           date: g.date,
           opponent: g.opponent,
           league: g.league,
