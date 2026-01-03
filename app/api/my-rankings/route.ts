@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { readFileSync, writeFileSync, renameSync } from 'fs';
-import { join } from 'path';
 import { auth } from '@clerk/nextjs/server';
 import { loadProspects, clearProspectCache } from '@/lib/loadProspects';
 import { clearScheduleCache } from '@/lib/loadSchedules';
 import { clearCachedGames, supabaseAdmin, getSupabaseUserId } from '@/lib/supabase';
-
-const MY_BOARD_PATH = join(process.cwd(), 'my_board_2026.txt');
-const ESPN_BOARD_PATH = join(process.cwd(), 'top_100_espn_2026_big_board.txt');
 
 export async function GET(request: NextRequest) {
   console.log('[my-rankings] GET request received');
@@ -112,34 +107,53 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    // Get authenticated user
+    const { userId } = await auth();
+    
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'You must be signed in to save rankings' },
+        { status: 401 }
+      );
+    }
+    
+    const supabaseUserId = await getSupabaseUserId(userId);
+    if (!supabaseUserId) {
+      return NextResponse.json(
+        { error: 'User not found. Please sign out and sign back in.' },
+        { status: 404 }
+      );
+    }
+
     const body = await request.json();
     const { prospects, resetToESPN } = body;
     
     if (resetToESPN === true) {
-      const espnContent = readFileSync(ESPN_BOARD_PATH, 'utf-8');
-      const tempPath = MY_BOARD_PATH + '.tmp';
-      writeFileSync(tempPath, espnContent, 'utf-8');
-      renameSync(tempPath, MY_BOARD_PATH);
+      console.log('[my-rankings] Resetting to ESPN rankings for user:', supabaseUserId);
       
-      try {
-        const { userId } = await auth();
-        if (userId) {
-          const supabaseUserId = await getSupabaseUserId(userId);
-          if (supabaseUserId) {
-            const { error: deleteError } = await supabaseAdmin
-              .from('user_rankings')
-              .delete()
-              .eq('user_id', supabaseUserId);
-            
-            if (deleteError) {
-              console.error('[my-rankings] Error clearing watchlist:', deleteError);
-            } else {
-              console.log('[my-rankings] Cleared watchlist for user');
-            }
-          }
-        }
-      } catch (err) {
-        console.error('[my-rankings] Error clearing watchlist:', err);
+      // Delete user's custom big board rankings
+      const { error: deleteBigBoardError } = await supabaseAdmin
+        .from('user_big_board')
+        .delete()
+        .eq('user_id', supabaseUserId);
+      
+      if (deleteBigBoardError) {
+        // Table might not exist yet - that's OK
+        console.warn('[my-rankings] Error clearing big board (may not exist):', deleteBigBoardError);
+      } else {
+        console.log('[my-rankings] Cleared big board for user');
+      }
+      
+      // Also clear watchlist
+      const { error: deleteWatchlistError } = await supabaseAdmin
+        .from('user_rankings')
+        .delete()
+        .eq('user_id', supabaseUserId);
+      
+      if (deleteWatchlistError) {
+        console.error('[my-rankings] Error clearing watchlist:', deleteWatchlistError);
+      } else {
+        console.log('[my-rankings] Cleared watchlist for user');
       }
       
       clearProspectCache('myboard');
@@ -159,8 +173,7 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // No limit on number of prospects - users can customize their board as they see fit
-    
+    // Validate prospects
     for (let i = 0; i < prospects.length; i++) {
       const prospect = prospects[i];
       if (!prospect.name || !prospect.position || !prospect.team) {
@@ -171,18 +184,43 @@ export async function POST(request: NextRequest) {
       }
     }
     
-    const lines: string[] = [];
-    for (let i = 0; i < prospects.length; i++) {
-      const prospect = prospects[i];
-      const rank = String(i + 1).padStart(2, '0');
-      lines.push(`${rank}. ${prospect.name} - ${prospect.position}, ${prospect.team}`);
+    console.log('[my-rankings] Saving', prospects.length, 'prospects to Supabase for user:', supabaseUserId);
+    
+    // Delete existing big board entries for this user
+    const { error: deleteError } = await supabaseAdmin
+      .from('user_big_board')
+      .delete()
+      .eq('user_id', supabaseUserId);
+    
+    if (deleteError) {
+      // Table might not exist yet - log but continue (will fail on insert if really broken)
+      console.warn('[my-rankings] Error deleting old big board (may not exist):', deleteError);
     }
     
-    const content = lines.join('\n') + '\n';
+    // Insert new rankings
+    const rankingsToInsert = prospects.map((prospect: any, index: number) => ({
+      user_id: supabaseUserId,
+      prospect_name: prospect.name,
+      prospect_position: prospect.position,
+      prospect_team: prospect.team,
+      rank: index + 1,
+    }));
     
-    const tempPath = MY_BOARD_PATH + '.tmp';
-    writeFileSync(tempPath, content, 'utf-8');
-    renameSync(tempPath, MY_BOARD_PATH);
+    if (rankingsToInsert.length > 0) {
+      const { error: insertError } = await supabaseAdmin
+        .from('user_big_board')
+        .insert(rankingsToInsert);
+      
+      if (insertError) {
+        console.error('[my-rankings] Error inserting rankings:', insertError);
+        return NextResponse.json(
+          { error: 'Failed to save rankings to database' },
+          { status: 500 }
+        );
+      }
+    }
+    
+    console.log('[my-rankings] Successfully saved', rankingsToInsert.length, 'prospects');
     
     clearProspectCache('myboard');
     clearScheduleCache('myboard');

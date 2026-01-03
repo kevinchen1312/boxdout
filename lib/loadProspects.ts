@@ -224,6 +224,67 @@ export const loadCustomPlayers = async (clerkUserId: string): Promise<Prospect[]
   }
 };
 
+/**
+ * Load user's custom big board rankings from Supabase
+ * Returns null if user hasn't saved custom rankings (use ESPN default)
+ */
+export const loadUserBigBoard = async (clerkUserId: string): Promise<Prospect[] | null> => {
+  try {
+    const supabaseUserId = await getSupabaseUserId(clerkUserId);
+    if (!supabaseUserId) {
+      return null;
+    }
+
+    // Add timeout to prevent hanging
+    const queryPromise = supabaseAdmin
+      .from('user_big_board')
+      .select('*')
+      .eq('user_id', supabaseUserId)
+      .order('rank', { ascending: true });
+    
+    const timeoutPromise = new Promise<{ data: null, error: { code: string, message: string } }>((resolve) => {
+      setTimeout(() => {
+        resolve({ data: null, error: { code: 'TIMEOUT', message: 'Query timeout' } });
+      }, 5000); // 5 second timeout
+    });
+    
+    const { data, error } = await Promise.race([queryPromise, timeoutPromise]) as any;
+
+    if (error) {
+      // Table might not exist yet or other error - fall back to default
+      if (error.code === 'TIMEOUT') {
+        console.warn('[loadUserBigBoard] Query timeout');
+      } else if (error.code === '42P01' || error.message?.includes('does not exist')) {
+        console.log('[loadUserBigBoard] Table does not exist yet, using ESPN default');
+      } else {
+        console.error('[loadUserBigBoard] Error:', error);
+      }
+      return null;
+    }
+
+    if (!data || data.length === 0) {
+      // User hasn't saved custom rankings yet - use default
+      console.log('[loadUserBigBoard] No custom rankings found for user, using ESPN default');
+      return null;
+    }
+
+    console.log('[loadUserBigBoard] Found', data.length, 'custom rankings for user');
+    
+    return data.map((row: any) => ({
+      rank: row.rank,
+      name: row.prospect_name,
+      position: row.prospect_position,
+      team: row.prospect_team,
+      class: classifyProspect(row.prospect_team),
+      espnRank: row.rank,
+      teamDisplay: row.prospect_team,
+    }));
+  } catch (error) {
+    console.error('[loadUserBigBoard] Error:', error);
+    return null;
+  }
+};
+
 export const loadWatchlistPlayers = async (clerkUserId: string): Promise<Prospect[]> => {
   try {
     const supabaseUserId = await getSupabaseUserId(clerkUserId);
@@ -301,35 +362,9 @@ export const loadProspects = async (
   source: RankingSource = 'espn',
   clerkUserId?: string
 ): Promise<Prospect[]> => {
-  // For caching, we need to handle custom players separately since they're user-specific
-  const cache = source === 'espn' ? cachedProspectsESPN : cachedProspectsMyBoard;
+  // Build team name → ID mapping for accurate team matching
+  const teamNameToId = await buildTeamNameToIdMap();
   
-  const filePath = path.join(process.cwd(), RANKING_FILES[source]);
-
-  // Try to read from file first, fall back to embedded data for Vercel/serverless
-  let content: string;
-  try {
-    if (fs.existsSync(filePath)) {
-      content = fs.readFileSync(filePath, 'utf-8');
-    } else if (source === 'espn') {
-      // Use embedded ESPN big board as fallback (for Vercel deployment)
-      console.log('[loadProspects] Using embedded ESPN big board (txt file not found)');
-      content = ESPN_BIG_BOARD_RAW;
-    } else {
-      // For myboard, also fall back to ESPN big board if file not found
-      console.log('[loadProspects] Using embedded ESPN big board as fallback for myboard (txt file not found)');
-      content = ESPN_BIG_BOARD_RAW;
-    }
-  } catch (fsError) {
-    // Filesystem error (e.g., on Vercel) - use embedded data
-    console.log('[loadProspects] Filesystem error, using embedded ESPN big board:', fsError);
-    content = ESPN_BIG_BOARD_RAW;
-  }
-  
-  const lines = content.split(/\r?\n/);
-
-  const prospects: Prospect[] = [];
-
   // Load ESPN rankings to get original ESPN rank for each prospect (for schedule matching)
   const espnProspects = source === 'espn' ? null : loadESPNProspectsForMapping();
   const espnNameToRank = new Map<string, number>();
@@ -339,8 +374,43 @@ export const loadProspects = async (
     }
   }
 
-  // Build team name → ID mapping for accurate team matching
-  const teamNameToId = await buildTeamNameToIdMap();
+  let prospects: Prospect[] = [];
+  
+  // For 'myboard' source with logged-in user, try loading custom big board from Supabase first
+  if (source === 'myboard' && clerkUserId) {
+    const userBigBoard = await loadUserBigBoard(clerkUserId);
+    if (userBigBoard && userBigBoard.length > 0) {
+      console.log('[loadProspects] Using user custom big board from Supabase:', userBigBoard.length, 'prospects');
+      
+      // Add team IDs to the user's custom rankings
+      for (const prospect of userBigBoard) {
+        const teamKey = normalizeTeamNameForLookup(prospect.team);
+        prospect.teamId = teamNameToId.get(teamKey);
+        prospect.espnRank = espnNameToRank.get(prospect.name) || prospect.rank;
+        prospect.source = 'espn' as const;
+      }
+      
+      prospects = userBigBoard;
+      
+      // Add custom players and watchlist
+      const customPlayers = await loadCustomPlayers(clerkUserId);
+      prospects.push(...customPlayers);
+      
+      const watchlistPlayers = await loadWatchlistPlayers(clerkUserId);
+      prospects.push(...watchlistPlayers);
+      
+      // Sort by rank
+      prospects.sort((a, b) => a.rank - b.rank);
+      
+      return prospects;
+    }
+    // If no custom big board found, fall through to use ESPN default
+    console.log('[loadProspects] No custom big board found, using ESPN default');
+  }
+
+  // Use ESPN big board as the data source (for both 'espn' and 'myboard' when no custom rankings exist)
+  const content = ESPN_BIG_BOARD_RAW;
+  const lines = content.split(/\r?\n/);
 
   for (const line of lines) {
     const trimmed = line.trim();
