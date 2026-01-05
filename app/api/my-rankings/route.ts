@@ -5,7 +5,7 @@ import { clearScheduleCache } from '@/lib/loadSchedules';
 import { clearCachedGames, supabaseAdmin, getSupabaseUserId } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
-  console.log('[my-rankings] GET request received');
+  console.log('[my-rankings] ========== GET RANKINGS ==========');
   
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -25,7 +25,8 @@ export async function GET(request: NextRequest) {
       const { userId } = await auth();
       const clerkUserId = userId || undefined;
       
-      console.log('[my-rankings] Loading prospects for user:', clerkUserId, 'excludeWatchlist:', excludeWatchlist);
+      console.log('[my-rankings] Auth userId:', userId ? 'present' : 'NOT AUTHENTICATED');
+      console.log('[my-rankings] Loading prospects for source:', source, 'clerkUserId:', clerkUserId ? 'present' : 'none');
       
       // Add timeout to loadProspects to prevent hanging
       const loadProspectsPromise = loadProspects(source as 'espn' | 'myboard', clerkUserId);
@@ -61,7 +62,9 @@ export async function GET(request: NextRequest) {
         });
       }
       
-      console.log('[my-rankings] Loaded', prospects.length, 'prospects (filtered from', allProspects.length, ')');
+      console.log('[my-rankings] ✓ Loaded', prospects.length, 'prospects (filtered from', allProspects.length, ')');
+      console.log('[my-rankings] Top 5 being returned:', prospects.slice(0, 5).map((p: any) => `${p.rank}. ${p.name}`));
+      console.log('[my-rankings] ========== GET COMPLETE ==========');
       
       const headers: HeadersInit = {};
       if (source === 'myboard') {
@@ -184,7 +187,9 @@ export async function POST(request: NextRequest) {
       }
     }
     
+    console.log('[my-rankings] ========== SAVING RANKINGS ==========');
     console.log('[my-rankings] Saving', prospects.length, 'prospects to Supabase for user:', supabaseUserId);
+    console.log('[my-rankings] Top 5 prospects being saved:', prospects.slice(0, 5).map((p: any, i: number) => `${i+1}. ${p.name}`));
     
     // Delete existing big board entries for this user
     const { error: deleteError } = await supabaseAdmin
@@ -195,6 +200,8 @@ export async function POST(request: NextRequest) {
     if (deleteError) {
       // Table might not exist yet - log but continue (will fail on insert if really broken)
       console.warn('[my-rankings] Error deleting old big board (may not exist):', deleteError);
+    } else {
+      console.log('[my-rankings] Successfully deleted old rankings');
     }
     
     // Insert new rankings
@@ -207,20 +214,24 @@ export async function POST(request: NextRequest) {
     }));
     
     if (rankingsToInsert.length > 0) {
-      const { error: insertError } = await supabaseAdmin
+      console.log('[my-rankings] Inserting', rankingsToInsert.length, 'rankings...');
+      const { error: insertError, data: insertData } = await supabaseAdmin
         .from('user_big_board')
-        .insert(rankingsToInsert);
+        .insert(rankingsToInsert)
+        .select();
       
       if (insertError) {
-        console.error('[my-rankings] Error inserting rankings:', insertError);
+        console.error('[my-rankings] ❌ Error inserting rankings:', insertError);
         return NextResponse.json(
           { error: 'Failed to save rankings to database' },
           { status: 500 }
         );
       }
+      console.log('[my-rankings] ✓ Insert successful, rows returned:', insertData?.length || 0);
     }
     
-    console.log('[my-rankings] Successfully saved', rankingsToInsert.length, 'prospects');
+    console.log('[my-rankings] ✓ Successfully saved', rankingsToInsert.length, 'prospects');
+    console.log('[my-rankings] ========== SAVE COMPLETE ==========');
     
     clearProspectCache('myboard');
     clearScheduleCache('myboard');

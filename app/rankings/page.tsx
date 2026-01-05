@@ -908,12 +908,15 @@ export default function RankingsPage() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false); // For background refresh indicator
   const initialLoadDoneRef = useRef(false);
+  const justSavedRef = useRef(false); // Track when we just saved to prevent API overwrite
 
   // Load toggle state from localStorage on mount AND load cached data immediately
   // CRITICAL: Set sourceReady=true AFTER determining the correct source to prevent ESPN flash
   useEffect(() => {
+    console.log('[Rankings] ========== MOUNT EFFECT ==========');
     const saved = localStorage.getItem('useMyBoard');
     const shouldUseMyBoard = saved === 'true';
+    console.log('[Rankings] localStorage useMyBoard:', saved, '→ shouldUseMyBoard:', shouldUseMyBoard);
     
     // Set the correct source BEFORE setting sourceReady
     setUseMyBoard(shouldUseMyBoard);
@@ -921,12 +924,17 @@ export default function RankingsPage() {
     // Try to load cached data immediately for instant display
     const source = shouldUseMyBoard ? 'myboard' : 'espn';
     const cacheKey = `rankings_${source}`;
+    console.log('[Rankings] Cache key:', cacheKey);
+    
     const cachedRankings = getStaleCachedData<Prospect[]>(cacheKey);
     
     if (cachedRankings && cachedRankings.length > 0) {
-      console.log(`[Rankings] Using cached ${source} rankings: ${cachedRankings.length} prospects`);
+      console.log(`[Rankings] ✓ Found cached ${source} rankings: ${cachedRankings.length} prospects`);
+      console.log('[Rankings] Cache top 5:', cachedRankings.slice(0, 5).map(p => p.name));
       setBigBoardProspects(cachedRankings);
       setLoading(false); // Don't show loading if we have cached data
+    } else {
+      console.log(`[Rankings] ❌ No cache found for ${cacheKey}`);
     }
     
     // Also load cached watchlist
@@ -938,6 +946,7 @@ export default function RankingsPage() {
     
     // Now we're ready to load - source is correctly set
     setSourceReady(true);
+    console.log('[Rankings] ========== MOUNT EFFECT DONE ==========');
   }, []);
 
   const sensors = useSensors(
@@ -958,6 +967,14 @@ export default function RankingsPage() {
       return;
     }
     
+    // Skip loading if we just saved - the state already has the correct data
+    // and we don't want the API to overwrite it
+    if (justSavedRef.current) {
+      console.log('[Rankings] Skipping load - just saved, data is already up to date');
+      justSavedRef.current = false; // Reset for future loads
+      return;
+    }
+    
     console.log(`[Rankings] Source ready, loading with useMyBoard=${useMyBoard}`);
     loadRankings();
     if (isSignedIn) {
@@ -966,14 +983,25 @@ export default function RankingsPage() {
     }
   }, [isSignedIn, useMyBoard, sourceReady]); // Reload when useMyBoard changes, but only after sourceReady
 
-  const loadRankings = async () => {
+  const loadRankings = async (forceRefresh = false) => {
     const source = useMyBoard ? 'myboard' : 'espn';
     const cacheKey = `rankings_${source}`;
     
-    console.log(`[Rankings] loadRankings called with source=${source}, useMyBoard=${useMyBoard}`);
+    console.log(`[Rankings] loadRankings called with source=${source}, useMyBoard=${useMyBoard}, forceRefresh=${forceRefresh}`);
     
     // Check if we already have data (from cache or previous load)
     const hasExistingData = bigBoardProspects.length > 0;
+    
+    // For myboard mode with existing data, trust the local state/cache and skip API
+    // This prevents the API from overwriting user's custom rankings
+    // Only call API on initial load or explicit refresh
+    if (source === 'myboard' && hasExistingData && !forceRefresh) {
+      console.log(`[Rankings] myboard mode with existing data - trusting local state, skipping API call`);
+      console.log(`[Rankings] Current top 3:`, bigBoardProspects.slice(0, 3).map(p => p.name));
+      setLoading(false);
+      setUpdating(false);
+      return;
+    }
     
     // INSTANT LOAD: Try to use cached data first
     if (!hasExistingData) {
@@ -982,7 +1010,16 @@ export default function RankingsPage() {
         console.log(`[Rankings] INSTANT: Using cached ${source} rankings: ${cached.length} prospects, top 3:`, cached.slice(0, 3).map(p => p.name));
         setBigBoardProspects(cached);
         setLoading(false);
-        // Do background refresh
+        
+        // For myboard mode, trust the cache and don't call API
+        // The cache is the source of truth for user's custom rankings
+        if (source === 'myboard') {
+          console.log(`[Rankings] myboard mode - trusting cache, skipping API call`);
+          setUpdating(false);
+          return;
+        }
+        
+        // For ESPN mode, do background refresh
         setUpdating(true);
       } else {
         console.log(`[Rankings] No cached data for ${source}, will fetch from API`);
@@ -1390,6 +1427,10 @@ export default function RankingsPage() {
   };
 
   const handleSave = async () => {
+    console.log('[handleSave] ========== SAVE STARTED ==========');
+    console.log('[handleSave] Current bigBoardProspects length:', bigBoardProspects.length);
+    console.log('[handleSave] Current top 5:', bigBoardProspects.slice(0, 5).map((p, i) => `${i+1}. ${p.name}`));
+    
     try {
       setSaving(true);
       setError(null);
@@ -1408,7 +1449,7 @@ export default function RankingsPage() {
           })),
       };
 
-      console.log(`[handleSave] Saving ${bigBoardPayload.prospects.length} big board prospects, top 3:`, 
+      console.log(`[handleSave] Sending ${bigBoardPayload.prospects.length} big board prospects to API, top 3:`, 
         bigBoardPayload.prospects.slice(0, 3).map(p => `${p.rank}. ${p.name}`));
 
       const bigBoardResponse = await fetch('/api/my-rankings', {
@@ -1466,6 +1507,16 @@ export default function RankingsPage() {
       setSuccessMessage('Rankings saved successfully!');
       setTimeout(() => setSuccessMessage(null), 3000);
       
+      // CRITICAL: Switch to myboard mode after saving
+      // This ensures returning to the rankings page loads the saved rankings, not ESPN defaults
+      if (!useMyBoard) {
+        console.log('[handleSave] Switching to myboard mode after first save');
+        // Set flag BEFORE state change to prevent the useEffect from reloading
+        justSavedRef.current = true;
+        setUseMyBoard(true);
+        localStorage.setItem('useMyBoard', 'true');
+      }
+      
       // DON'T clear games cache - we'll update ranks in-place instead
       // This keeps gamecards visible and only updates rankings instantly
       console.log('[handleSave] Rankings saved, updating ranks in-place (not clearing games cache)');
@@ -1509,10 +1560,19 @@ export default function RankingsPage() {
       // Store rankings in localStorage for cross-route instant updates
       // Also dispatch event as backup
       if (typeof window !== 'undefined') {
-        // CRITICAL: Update the rankings page cache with the saved data
-        // This ensures returning to the rankings page shows the correct saved data
-        setCachedData('rankings_myboard', bigBoardProspects, 5 * 60 * 1000);
-        console.log('[handleSave] ✓ Updated rankings_myboard cache with saved data');
+      // CRITICAL: Update the rankings page cache with the saved data
+      // This ensures returning to the rankings page shows the correct saved data
+      console.log('[handleSave] Caching rankings_myboard, top 5:', bigBoardProspects.slice(0, 5).map(p => p.name));
+      setCachedData('rankings_myboard', bigBoardProspects, 5 * 60 * 1000);
+      
+      // Verify cache was set correctly
+      const verifyCache = getStaleCachedData<Prospect[]>('rankings_myboard');
+      if (verifyCache && verifyCache.length > 0) {
+        console.log('[handleSave] ✓ Cache verification - top 5:', verifyCache.slice(0, 5).map(p => p.name));
+      } else {
+        console.error('[handleSave] ❌ Cache verification FAILED - cache is empty!');
+      }
+      console.log('[handleSave] ✓ Updated rankings_myboard cache with saved data');
         
         // Also update watchlist cache if we have watchlist data
         // Always update watchlist cache (even if empty, to clear old entries)
@@ -1592,8 +1652,15 @@ export default function RankingsPage() {
         console.log('[handleResetToESPN] Dispatched rankingsUpdated event for in-place rank update');
       }
       
-      // Reload rankings and watchlist
-      await loadRankings();
+      // Clear the big board so loadRankings will fetch fresh data from API
+      setBigBoardProspects([]);
+      
+      // Also clear the cache so we don't reload old data
+      clearCacheByKey('rankings_myboard');
+      clearCacheByKey('rankings_espn');
+      
+      // Reload rankings and watchlist (force refresh to get fresh ESPN data)
+      await loadRankings(true);
       if (isSignedIn) {
         await loadUserRankings();
       }

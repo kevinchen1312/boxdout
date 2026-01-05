@@ -229,9 +229,15 @@ export const loadCustomPlayers = async (clerkUserId: string): Promise<Prospect[]
  * Returns null if user hasn't saved custom rankings (use ESPN default)
  */
 export const loadUserBigBoard = async (clerkUserId: string): Promise<Prospect[] | null> => {
+  console.log('[loadUserBigBoard] ========== LOADING USER BIG BOARD ==========');
+  console.log('[loadUserBigBoard] clerkUserId:', clerkUserId);
+  
   try {
     const supabaseUserId = await getSupabaseUserId(clerkUserId);
+    console.log('[loadUserBigBoard] supabaseUserId:', supabaseUserId);
+    
     if (!supabaseUserId) {
+      console.log('[loadUserBigBoard] ❌ No supabaseUserId found, returning null');
       return null;
     }
 
@@ -253,22 +259,23 @@ export const loadUserBigBoard = async (clerkUserId: string): Promise<Prospect[] 
     if (error) {
       // Table might not exist yet or other error - fall back to default
       if (error.code === 'TIMEOUT') {
-        console.warn('[loadUserBigBoard] Query timeout');
+        console.warn('[loadUserBigBoard] ❌ Query timeout');
       } else if (error.code === '42P01' || error.message?.includes('does not exist')) {
-        console.log('[loadUserBigBoard] Table does not exist yet, using ESPN default');
+        console.log('[loadUserBigBoard] ❌ Table does not exist yet, using ESPN default');
       } else {
-        console.error('[loadUserBigBoard] Error:', error);
+        console.error('[loadUserBigBoard] ❌ Error:', error);
       }
       return null;
     }
 
     if (!data || data.length === 0) {
       // User hasn't saved custom rankings yet - use default
-      console.log('[loadUserBigBoard] No custom rankings found for user, using ESPN default');
+      console.log('[loadUserBigBoard] ❌ No custom rankings found for user, using ESPN default');
       return null;
     }
 
-    console.log('[loadUserBigBoard] Found', data.length, 'custom rankings for user');
+    console.log('[loadUserBigBoard] ✓ Found', data.length, 'custom rankings for user');
+    console.log('[loadUserBigBoard] Top 5:', data.slice(0, 5).map((r: any) => `${r.rank}. ${r.prospect_name}`));
     
     return data.map((row: any) => ({
       rank: row.rank,
