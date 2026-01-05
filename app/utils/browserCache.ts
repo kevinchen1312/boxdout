@@ -7,9 +7,13 @@ export interface CacheEntry<T> {
   data: T;
   timestamp: number;
   expiresAt: number;
+  version?: number; // Added for cache invalidation
 }
 
 const CACHE_PREFIX = 'prospectcal_cache_';
+// Increment this version to force cache invalidation across all users
+// v2: Fixed tipoff parsing bug that was showing "1/4" instead of time
+const CACHE_VERSION = 2;
 
 /**
  * Get data from cache if it exists and is not expired
@@ -25,6 +29,13 @@ export function getCachedData<T>(key: string): T | null {
     
     const entry: CacheEntry<T> = JSON.parse(cached);
     const now = Date.now();
+    
+    // Check cache version - invalidate old cache
+    if (entry.version !== CACHE_VERSION) {
+      console.log(`[Cache] Version mismatch for ${key} (cached: ${entry.version || 'none'}, current: ${CACHE_VERSION}), invalidating`);
+      localStorage.removeItem(cacheKey);
+      return null;
+    }
     
     // Check if cache has expired
     if (now > entry.expiresAt) {
@@ -57,6 +68,13 @@ export function getStaleCachedData<T>(key: string): T | null {
     const now = Date.now();
     const age = Math.round((now - entry.timestamp) / 1000);
     
+    // Check cache version - invalidate old cache
+    if (entry.version !== CACHE_VERSION) {
+      console.log(`[Cache] Version mismatch for ${key} (cached: ${entry.version || 'none'}, current: ${CACHE_VERSION}), invalidating`);
+      localStorage.removeItem(cacheKey);
+      return null;
+    }
+    
     if (now > entry.expiresAt) {
       console.log(`[Cache] Using stale data for ${key}, age: ${age}s`);
     } else {
@@ -80,10 +98,11 @@ export function setCachedData<T>(key: string, data: T, ttlMs: number = 5 * 60 * 
       data,
       timestamp: Date.now(),
       expiresAt: Date.now() + ttlMs,
+      version: CACHE_VERSION, // Include version for invalidation
     };
     
     localStorage.setItem(cacheKey, JSON.stringify(entry));
-    console.log(`[Cache] Stored ${key}, TTL: ${Math.round(ttlMs / 1000)}s`);
+    console.log(`[Cache] Stored ${key}, TTL: ${Math.round(ttlMs / 1000)}s, version: ${CACHE_VERSION}`);
   } catch (error) {
     // localStorage might be full or disabled
     console.error('[Cache] Error writing to cache:', error);
@@ -98,6 +117,7 @@ export function setCachedData<T>(key: string, data: T, ttlMs: number = 5 * 60 * 
           data,
           timestamp: Date.now(),
           expiresAt: Date.now() + ttlMs,
+          version: CACHE_VERSION,
         };
         localStorage.setItem(cacheKey, JSON.stringify(entry));
       } catch {

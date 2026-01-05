@@ -19,8 +19,19 @@ interface GameCardProps {
 
 const deriveTipoff = (game: GameWithProspects) => {
   if (game.tipoff) {
-    // Convert ET times to local timezone
-    return convertTipoffToLocal(game.tipoff, game.date);
+    // Validate tipoff format - reject values that look like dates (e.g., "1/4", "12/25")
+    // Valid tipoff formats: "7:00 PM", "7:00 PM ET", "12:30 AM", etc.
+    const isValidTipoff = /^\d{1,2}:\d{2}\s*(AM|PM)/i.test(game.tipoff) || 
+                          /^TBD$/i.test(game.tipoff) ||
+                          /^TBA$/i.test(game.tipoff);
+    
+    if (!isValidTipoff) {
+      // Invalid tipoff (likely a date like "1/4") - try to extract from date field instead
+      console.warn(`[GameCard] Invalid tipoff format detected: "${game.tipoff}" for game ${game.id}`);
+    } else {
+      // Convert ET times to local timezone
+      return convertTipoffToLocal(game.tipoff, game.date);
+    }
   }
 
   if (!game.date) {
