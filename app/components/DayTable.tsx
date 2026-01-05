@@ -18,6 +18,17 @@ interface DayTableProps {
 const DayTable = memo(function DayTable({ date, games, rankingSource = 'espn', gameStatuses }: DayTableProps) {
   const dateKey = localYMD(date);
   const isToday = dateKey === localYMD(new Date());
+  
+  // Filter to only show games that have at least one tracked player (myBoard or watchlist)
+  // This prevents empty game cards from appearing on the calendar
+  const gamesWithProspects = games.filter(game => {
+    const homeTracked = game.homeTrackedPlayers?.length || 0;
+    const awayTracked = game.awayTrackedPlayers?.length || 0;
+    const homeProspects = game.homeProspects?.length || 0;
+    const awayProspects = game.awayProspects?.length || 0;
+    const totalProspects = game.prospects?.length || 0;
+    return homeTracked > 0 || awayTracked > 0 || homeProspects > 0 || awayProspects > 0 || totalProspects > 0;
+  });
 
   return (
     <section className="day">
@@ -34,9 +45,9 @@ const DayTable = memo(function DayTable({ date, games, rankingSource = 'espn', g
         )}
       </div>
 
-      {games.length > 0 ? (
+      {gamesWithProspects.length > 0 ? (
         <div className="day-table">
-          {games.map((game) => {
+          {gamesWithProspects.map((game) => {
             const status = gameStatuses?.get(game.id);
             return (
               <GameCardWithPanel
