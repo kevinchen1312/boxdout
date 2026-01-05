@@ -51,40 +51,73 @@ export async function GET(
     }
 
     // Transform database format to GameWithProspects format
-    const games: GameWithProspects[] = allDbGames.map((dbGame) => ({
-      id: dbGame.game_id,
-      date: dbGame.date,
-      dateKey: dbGame.date_key,
-      tipoff: dbGame.status_detail?.includes(':') 
-        ? dbGame.status_detail.split(' ')[0] 
-        : undefined,
-      status: dbGame.status || 'scheduled',
-      statusDetail: dbGame.status_detail || undefined,
-      homeTeam: {
-        id: dbGame.home_team_id,
-        name: dbGame.home_team_name,
-        displayName: dbGame.home_team_display_name,
-        logo: dbGame.home_team_logo,
-        score: dbGame.home_score?.toString(),
-      },
-      awayTeam: {
-        id: dbGame.away_team_id,
-        name: dbGame.away_team_name,
-        displayName: dbGame.away_team_display_name,
-        logo: dbGame.away_team_logo,
-        score: dbGame.away_score?.toString(),
-      },
-      broadcasts: dbGame.broadcasts || [],
-      venue: dbGame.venue || undefined,
-      venueCity: dbGame.venue_city || undefined,
-      venueState: dbGame.venue_state || undefined,
-      // These will be populated by the client-side decoration
-      homeTrackedPlayers: [],
-      awayTrackedPlayers: [],
-      homeProspects: [],
-      awayProspects: [],
-      prospects: [],
-    }));
+    const games: GameWithProspects[] = allDbGames.map((dbGame) => {
+      // Extract tipoff time from database - try multiple sources
+      let tipoff: string | undefined;
+      
+      // 1. Check if there's a stored tipoff time (e.g., "7:00 PM ET")
+      if (dbGame.tipoff && typeof dbGame.tipoff === 'string') {
+        tipoff = dbGame.tipoff;
+      }
+      // 2. Try to extract from status_detail if it looks like a time (e.g., "7:00 PM - ESPN")
+      else if (dbGame.status_detail && typeof dbGame.status_detail === 'string') {
+        // Match time pattern: "7:00 PM", "12:30 AM", etc.
+        const timeMatch = dbGame.status_detail.match(/(\d{1,2}:\d{2}\s*(?:AM|PM))/i);
+        if (timeMatch) {
+          tipoff = timeMatch[1] + ' ET';
+        }
+      }
+      // 3. Try to extract from date field if it's an ISO timestamp
+      if (!tipoff && dbGame.date) {
+        try {
+          const gameDate = new Date(dbGame.date);
+          // Only use if it has a valid time (not midnight which suggests date-only)
+          if (gameDate.getHours() !== 0 || gameDate.getMinutes() !== 0) {
+            tipoff = gameDate.toLocaleTimeString('en-US', { 
+              hour: 'numeric', 
+              minute: '2-digit',
+              hour12: true,
+              timeZone: 'America/New_York'
+            }) + ' ET';
+          }
+        } catch (e) {
+          // Ignore date parsing errors
+        }
+      }
+      
+      return {
+        id: dbGame.game_id,
+        date: dbGame.date,
+        dateKey: dbGame.date_key,
+        tipoff,
+        status: dbGame.status || 'scheduled',
+        statusDetail: dbGame.status_detail || undefined,
+        homeTeam: {
+          id: dbGame.home_team_id,
+          name: dbGame.home_team_name,
+          displayName: dbGame.home_team_display_name,
+          logo: dbGame.home_team_logo,
+          score: dbGame.home_score?.toString(),
+        },
+        awayTeam: {
+          id: dbGame.away_team_id,
+          name: dbGame.away_team_name,
+          displayName: dbGame.away_team_display_name,
+          logo: dbGame.away_team_logo,
+          score: dbGame.away_score?.toString(),
+        },
+        broadcasts: dbGame.broadcasts || [],
+        venue: dbGame.venue || undefined,
+        venueCity: dbGame.venue_city || undefined,
+        venueState: dbGame.venue_state || undefined,
+        // These will be populated by the client-side decoration
+        homeTrackedPlayers: [],
+        awayTrackedPlayers: [],
+        homeProspects: [],
+        awayProspects: [],
+        prospects: [],
+      };
+    });
 
     console.log(`[API/games/team] Found ${games.length} games for team ${teamId}`);
 
