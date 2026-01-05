@@ -1135,15 +1135,20 @@ export default function RankingsPage() {
         }));
       setImportedProspects(imported);
       // Merge database watchlist with local watchlist (preserve locally moved prospects)
+      // CRITICAL FIX: Use NAME-based deduplication, not ID-based, because:
+      // - Cached prospects may have different IDs than DB prospects (e.g., ESPN name-based ID vs UUID)
+      // - Using ID-based dedup causes duplicates when the same player has different IDs in cache vs DB
       setWatchlistProspects((prevWatchlist) => {
         const dbProspects = imported.map(importedProspectToProspect);
-        const dbIds = new Set(dbProspects.map((p: Prospect) => p.id));
+        
+        // Use lowercase names for deduplication (more reliable than IDs)
+        const dbNames = new Set(dbProspects.map((p: Prospect) => p.name?.toLowerCase().trim()));
         
         console.log('[loadUserRankings] DB prospects:', dbProspects.length, dbProspects.map((p: Prospect) => p.name));
         console.log('[loadUserRankings] Previous watchlist:', prevWatchlist.length, prevWatchlist.map((p: Prospect) => p.name));
         
-        // Keep locally moved prospects that aren't in database yet
-        const localOnly = prevWatchlist.filter((p: Prospect) => !dbIds.has(p.id));
+        // Keep locally moved prospects that aren't in database yet (by name, not ID)
+        const localOnly = prevWatchlist.filter((p: Prospect) => !dbNames.has(p.name?.toLowerCase().trim()));
         
         console.log('[loadUserRankings] Local-only prospects:', localOnly.length, localOnly.map((p: Prospect) => p.name));
         
