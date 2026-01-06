@@ -417,67 +417,42 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg-page)' }} ref={mainContentRef}>
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="max-w-5xl mx-auto px-4 py-4">
         {/* Header */}
-        <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-          <div className="flex items-center justify-between">
-            <h1 
-              className="text-2xl font-bold text-[var(--text-primary)] cursor-pointer hover:opacity-80 transition-opacity" 
-              onClick={handleBackToCalendar}
-            >
-              boxdout
-            </h1>
-            {/* Mobile user button */}
-            <div className="sm:hidden">
-              {isSignedIn ? (
-                <UserButton afterSignOutUrl="/" />
-              ) : (
-                <SignInButton mode="modal">
-                  <button className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
-                    Sign In
-                  </button>
-                </SignInButton>
-              )}
-            </div>
-          </div>
-          <nav className="flex items-center flex-wrap gap-x-4 gap-y-2 sm:gap-x-6 text-sm sm:text-base">
-            <Link href="/rankings" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors whitespace-nowrap">
+        <header className="flex items-center justify-between mb-4">
+          <h1 
+            className="text-2xl font-bold text-[var(--text-primary)] cursor-pointer hover:opacity-80 transition-opacity" 
+            onClick={handleBackToCalendar}
+          >
+            boxdout
+          </h1>
+          <nav style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+            <Link href="/rankings" style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
               My Rankings
             </Link>
-            <Link href="/notes" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors whitespace-nowrap">
+            <Link href="/notes" style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
               My Notes
             </Link>
-            <Link href="/network" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors whitespace-nowrap">
+            <Link href="/network" style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
               My Network
             </Link>
+            <Link href="/profile" style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+              Profile
+            </Link>
             {isSignedIn ? (
-              <>
-                <Link href="/profile" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors whitespace-nowrap">
-                  Profile
-                </Link>
-                <div className="hidden sm:block">
-                  <UserButton afterSignOutUrl="/" />
-                </div>
-              </>
+              <UserButton afterSignOutUrl="/" />
             ) : (
-              <div className="hidden sm:flex items-center gap-4">
-                <SignInButton mode="modal">
-                  <button className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors whitespace-nowrap">
-                    Sign In
-                  </button>
-                </SignInButton>
-                <SignUpButton mode="modal">
-                  <button className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors whitespace-nowrap">
-                    Sign Up
-                  </button>
-                </SignUpButton>
-              </div>
+              <SignInButton mode="modal">
+                <button style={{ color: 'var(--text-secondary)' }}>
+                  Sign In
+                </button>
+              </SignInButton>
             )}
           </nav>
         </header>
 
         {/* Date Picker and Search */}
-        <div className="flex flex-wrap items-center gap-4 mb-4">
+        <div className="flex flex-wrap items-center gap-4 mb-3">
           <WeekDatePicker 
             selectedDate={selectedDate} 
             onSelectDate={setSelectedDate}
