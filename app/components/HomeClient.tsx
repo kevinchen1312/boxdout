@@ -483,12 +483,22 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
         ) : loading && Object.keys(games).length === 0 ? (
           <LoadingSkeleton message={loadingMessage} />
         ) : viewMode === 'team' && selectedTeam ? (
-          <TeamSchedule
-            teamName={selectedTeam}
-            games={teamGames}
-            rankingSource={rankingSource}
-            onBack={handleBackToCalendar}
-          />
+          <div>
+            <button
+              onClick={handleBackToCalendar}
+              className="mb-4 text-sm text-[var(--accent)] hover:underline"
+            >
+              ← Back to Calendar
+            </button>
+            <TeamSchedule
+              team={selectedTeam}
+              gamesByDate={games}
+              parseLocalYMD={parseLocalYMD}
+              DayTable={DayTable}
+              rankingSource={rankingSource}
+              gameStatuses={gameStatuses}
+            />
+          </div>
         ) : viewMode === 'prospect' && selectedProspect && prospectScheduleData ? (
           <div>
             <button
