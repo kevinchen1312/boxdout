@@ -74,17 +74,41 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
   const [mounted, setMounted] = useState(false);
   
   // Read ranking source from localStorage on mount
+  // For signed-in users, check database for custom rankings (cross-device sync)
   useEffect(() => {
     setMounted(true);
-    const useMyBoard = localStorage.getItem('useMyBoard');
-    const actualSource = useMyBoard === 'true' ? 'myboard' : 'espn';
     
-    // Only update if different from initial (user has custom rankings)
-    if (actualSource !== initialSource) {
-      setRankingSource(actualSource);
-      // This will trigger a refresh for user-specific data
-    }
-  }, [initialSource]);
+    const checkSource = async () => {
+      const useMyBoard = localStorage.getItem('useMyBoard');
+      let actualSource: RankingSource = useMyBoard === 'true' ? 'myboard' : 'espn';
+      
+      // For signed-in users, check if they have custom rankings in database
+      // This enables cross-device sync - even on a new device with empty localStorage
+      if (isSignedIn && actualSource === 'espn') {
+        try {
+          const response = await fetch('/api/my-rankings/check-custom', { cache: 'no-store' });
+          if (response.ok) {
+            const data = await response.json();
+            if (data.hasCustomRankings) {
+              console.log('[HomeClient] User has custom rankings in database, switching to myboard mode');
+              actualSource = 'myboard';
+              localStorage.setItem('useMyBoard', 'true');
+            }
+          }
+        } catch (err) {
+          console.warn('[HomeClient] Failed to check for custom rankings:', err);
+        }
+      }
+      
+      // Only update if different from initial (user has custom rankings)
+      if (actualSource !== initialSource) {
+        setRankingSource(actualSource);
+        // This will trigger a refresh for user-specific data
+      }
+    };
+    
+    checkSource();
+  }, [initialSource, isSignedIn]);
 
   // Pass initial games to useGames hook
   const { games, loading, error, loadingMessage, updating, fetchGames, refresh, updateProspectRanks } = useGames({ 
