@@ -417,16 +417,16 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--bg-page)' }} ref={mainContentRef}>
-      <div className="max-w-4xl mx-auto px-6 py-4">
+      <div style={{ maxWidth: '900px', margin: '0 auto', padding: '16px 24px' }}>
         {/* Header */}
-        <header className="flex items-center justify-between mb-4">
+        <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
           <h1 
-            className="text-2xl font-bold text-[var(--text-primary)] cursor-pointer hover:opacity-80 transition-opacity" 
+            className="text-xl font-bold text-[var(--text-primary)] cursor-pointer hover:opacity-80 transition-opacity" 
             onClick={handleBackToCalendar}
           >
             boxdout
           </h1>
-          <nav style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+          <nav style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '14px' }}>
             <Link href="/rankings" style={{ color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
               My Rankings
             </Link>
@@ -452,7 +452,7 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
         </header>
 
         {/* Date Picker and Search */}
-        <div className="flex flex-wrap items-center gap-4 mb-3">
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '16px', marginBottom: '12px' }}>
           <WeekDatePicker 
             selectedDate={selectedDate} 
             onSelectDate={setSelectedDate}
