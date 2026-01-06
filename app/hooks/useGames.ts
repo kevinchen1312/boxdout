@@ -11,20 +11,23 @@ export type RankingSource = 'espn' | 'myboard';
 interface UseGamesOptions {
   source?: RankingSource;
   ready?: boolean; // If provided, wait until ready is true before loading
+  initialGames?: GamesByDate; // Server-side pre-fetched games for instant display
 }
 
 export function useGames(options: UseGamesOptions = {}) {
-  const { source = 'espn', ready = true } = options;
-  const [games, setGames] = useState<GamesByDate>({});
+  const { source = 'espn', ready = true, initialGames } = options;
+  // Use initial games if provided, otherwise empty object
+  const [games, setGames] = useState<GamesByDate>(initialGames || {});
   const [gamesVersion, setGamesVersion] = useState(0); // Version counter to force re-renders
-  const [loading, setLoading] = useState(true);
+  // If we have initial games, start with loading=false (no loading spinner needed)
+  const [loading, setLoading] = useState(!initialGames || Object.keys(initialGames).length === 0);
   const [error, setError] = useState<string | null>(null);
   const [loadingMessage, setLoadingMessage] = useState<string>('Loading schedules...');
   const [updating, setUpdating] = useState(false);
-  const loadedSourceRef = useRef<RankingSource | null>(null);
+  const loadedSourceRef = useRef<RankingSource | null>(initialGames ? source : null);
   const refreshTriggerRef = useRef(0);
   const isMergingRef = useRef(false); // Flag to prevent reloads during merge operations
-  const hasGamesRef = useRef(false); // Track if we have games loaded (for stable reference in callbacks)
+  const hasGamesRef = useRef(!!initialGames && Object.keys(initialGames).length > 0); // Track if we have games loaded
   
   // Keep hasGamesRef in sync with games state
   hasGamesRef.current = Object.keys(games).length > 0;
