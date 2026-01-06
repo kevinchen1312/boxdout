@@ -419,16 +419,28 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
     <div className="min-h-screen" style={{ background: 'var(--bg-page)' }} ref={mainContentRef}>
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Header */}
-        <header className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-4">
+        <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
+          <div className="flex items-center justify-between">
             <h1 
               className="text-2xl font-bold text-[var(--text-primary)] cursor-pointer hover:opacity-80 transition-opacity" 
               onClick={handleBackToCalendar}
             >
               boxdout
             </h1>
+            {/* Mobile user button */}
+            <div className="sm:hidden">
+              {isSignedIn ? (
+                <UserButton afterSignOutUrl="/" />
+              ) : (
+                <SignInButton mode="modal">
+                  <button className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
+                    Sign In
+                  </button>
+                </SignInButton>
+              )}
+            </div>
           </div>
-          <nav className="flex items-center" style={{ gap: '24px' }}>
+          <nav className="flex items-center flex-wrap gap-x-4 gap-y-2 sm:gap-x-6 text-sm sm:text-base">
             <Link href="/rankings" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors whitespace-nowrap">
               My Rankings
             </Link>
@@ -443,10 +455,12 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
                 <Link href="/profile" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors whitespace-nowrap">
                   Profile
                 </Link>
-                <UserButton afterSignOutUrl="/" />
+                <div className="hidden sm:block">
+                  <UserButton afterSignOutUrl="/" />
+                </div>
               </>
             ) : (
-              <>
+              <div className="hidden sm:flex items-center gap-4">
                 <SignInButton mode="modal">
                   <button className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors whitespace-nowrap">
                     Sign In
@@ -457,7 +471,7 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
                     Sign Up
                   </button>
                 </SignUpButton>
-              </>
+              </div>
             )}
           </nav>
         </header>
