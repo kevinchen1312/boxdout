@@ -546,8 +546,8 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
         <DebugPanel
           games={games}
           loading={loading}
-          updating={updating}
-          source={rankingSource}
+          error={error}
+          dateRange={dateRange}
         />
       </div>
     </div>
