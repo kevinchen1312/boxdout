@@ -534,12 +534,11 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
         {/* Search Overlay */}
         {searchOpen && (
           <SearchOverlay
-            games={allGames}
+            open={searchOpen}
             onClose={() => setSearchOpen(false)}
-            onSelectTeam={handleSelectTeam}
-            onSelectProspect={handleSelectProspect}
-            bigBoardProspects={bigBoardProspects}
-            watchlistProspects={watchlistProspects}
+            gamesByDate={games}
+            onGoTeam={handleSelectTeam}
+            onGoProspect={handleSelectProspect}
           />
         )}
 
