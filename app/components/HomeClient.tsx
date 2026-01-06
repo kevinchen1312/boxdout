@@ -416,8 +416,8 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
   const teamGames = selectedTeam ? teamIndex.get(selectedTeam) || [] : [];
 
   return (
-    <div className="min-h-screen bg-[var(--background)]" ref={mainContentRef}>
-      <div className="max-w-7xl mx-auto px-4 py-4">
+    <div className="min-h-screen" style={{ background: 'var(--bg-page)' }} ref={mainContentRef}>
+      <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Header */}
         <header className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-4">
@@ -428,19 +428,19 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
               boxdout
             </h1>
           </div>
-          <nav className="flex items-center gap-6">
-            <Link href="/rankings" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
+          <nav className="flex items-center" style={{ gap: '24px' }}>
+            <Link href="/rankings" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors whitespace-nowrap">
               My Rankings
             </Link>
-            <Link href="/notes" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
+            <Link href="/notes" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors whitespace-nowrap">
               My Notes
             </Link>
-            <Link href="/network" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
+            <Link href="/network" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors whitespace-nowrap">
               My Network
             </Link>
             {isSignedIn ? (
               <>
-                <Link href="/profile" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
+                <Link href="/profile" className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors whitespace-nowrap">
                   Profile
                 </Link>
                 <UserButton afterSignOutUrl="/" />
@@ -448,12 +448,12 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
             ) : (
               <>
                 <SignInButton mode="modal">
-                  <button className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
+                  <button className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors whitespace-nowrap">
                     Sign In
                   </button>
                 </SignInButton>
                 <SignUpButton mode="modal">
-                  <button className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors">
+                  <button className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors whitespace-nowrap">
                     Sign Up
                   </button>
                 </SignUpButton>
