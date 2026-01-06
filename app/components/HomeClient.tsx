@@ -69,7 +69,7 @@ interface HomeClientProps {
 
 export default function HomeClient({ initialGames, initialSource }: HomeClientProps) {
   const { isSignedIn } = useUser();
-  const [sourceReady, setSourceReady] = useState(true); // Start ready since we have initial data
+  const [sourceReady, setSourceReady] = useState(false); // Wait until we determine the correct source
   const [rankingSource, setRankingSource] = useState<RankingSource>(initialSource);
   const [mounted, setMounted] = useState(false);
   
@@ -77,6 +77,11 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
   // For signed-in users, check database for custom rankings (cross-device sync)
   useEffect(() => {
     setMounted(true);
+    
+    // Wait for auth to be determined before checking source
+    if (isSignedIn === undefined) {
+      return;
+    }
     
     const checkSource = async () => {
       const useMyBoard = localStorage.getItem('useMyBoard');
@@ -100,11 +105,8 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
         }
       }
       
-      // Only update if different from initial (user has custom rankings)
-      if (actualSource !== initialSource) {
-        setRankingSource(actualSource);
-        // This will trigger a refresh for user-specific data
-      }
+      setRankingSource(actualSource);
+      setSourceReady(true); // Now we're ready to load
     };
     
     checkSource();
@@ -114,7 +116,7 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
   const { games, loading, error, loadingMessage, updating, fetchGames, refresh, updateProspectRanks } = useGames({ 
     source: rankingSource, 
     ready: sourceReady,
-    initialGames: rankingSource === initialSource ? initialGames : undefined, // Use initial games if source matches
+    initialGames: undefined, // Don't use initial games - always fetch fresh for correct rankings
   });
   
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null);
