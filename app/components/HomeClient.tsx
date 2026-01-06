@@ -466,7 +466,7 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
         <div className="flex flex-wrap items-center gap-4 mb-4">
           <WeekDatePicker 
             selectedDate={selectedDate} 
-            onDateChange={setSelectedDate}
+            onSelectDate={setSelectedDate}
           />
           <SearchBox 
             onClick={() => setSearchOpen(true)} 
