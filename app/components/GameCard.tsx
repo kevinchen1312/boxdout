@@ -553,12 +553,15 @@ const leftDisplayTeam: DisplayTeam = {
                   {sourceLabel} {tracked.rank}: {tracked.playerName}
                 </div>
               ))}
-            {/* Render watchlist players */}
-            {leftWatchlist.length > 0 && (
-              <div className="prospect-line text-xs leading-snug">
-                Watchlist: {leftWatchlist.map(p => p.playerName).join(', ')}
+            {/* Render watchlist players - one per line */}
+            {leftWatchlist.map((tracked) => (
+              <div
+                key={`left-watchlist-${tracked.playerId}`}
+                className="prospect-line text-xs leading-snug"
+              >
+                Watchlist: {tracked.playerName}
               </div>
-            )}
+            ))}
             {/* Fallback to old system if tracked players not available */}
             {leftDisplayTeam.trackedPlayers.length === 0 && leftProspects.length > 0 &&
               leftProspects.map((prospect) => (
@@ -626,12 +629,15 @@ const leftDisplayTeam: DisplayTeam = {
                   {sourceLabel} {tracked.rank}: {tracked.playerName}
                 </div>
               ))}
-            {/* Render watchlist players */}
-            {rightWatchlist.length > 0 && (
-              <div className="prospect-line text-xs leading-snug">
-                Watchlist: {rightWatchlist.map(p => p.playerName).join(', ')}
+            {/* Render watchlist players - one per line */}
+            {rightWatchlist.map((tracked) => (
+              <div
+                key={`right-watchlist-${tracked.playerId}`}
+                className="prospect-line text-xs leading-snug"
+              >
+                Watchlist: {tracked.playerName}
               </div>
-            )}
+            ))}
             {/* Fallback to old system if tracked players not available */}
             {rightDisplayTeam.trackedPlayers.length === 0 && rightProspects.length > 0 &&
               rightProspects.map((prospect) => (

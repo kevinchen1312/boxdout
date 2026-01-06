@@ -906,6 +906,7 @@ export default function RankingsPage() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [fetchingGames, setFetchingGames] = useState<string | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [watchlistCollapsed, setWatchlistCollapsed] = useState(false); // Collapse watchlist on mobile
   const [updating, setUpdating] = useState(false); // For background refresh indicator
   const initialLoadDoneRef = useRef(false);
   const justSavedRef = useRef(false); // Track when we just saved to prevent API overwrite
@@ -914,7 +915,16 @@ export default function RankingsPage() {
   // CRITICAL: Set sourceReady=true AFTER determining the correct source to prevent ESPN flash
   // For signed-in users, always check the database for custom rankings (cross-device sync)
   useEffect(() => {
+    // Wait for auth to be fully loaded before determining source
+    // This prevents loading ESPN rankings before we know if user has custom rankings
+    if (isSignedIn === undefined) {
+      console.log('[Rankings] Auth still loading, waiting...');
+      return;
+    }
+    
     console.log('[Rankings] ========== MOUNT EFFECT ==========');
+    console.log('[Rankings] isSignedIn:', isSignedIn);
+    
     const saved = localStorage.getItem('useMyBoard');
     const localUseMyBoard = saved === 'true';
     console.log('[Rankings] localStorage useMyBoard:', saved, '→ localUseMyBoard:', localUseMyBoard);
@@ -937,6 +947,8 @@ export default function RankingsPage() {
               localStorage.setItem('useMyBoard', 'true');
               setSourceReady(true);
               return;
+            } else {
+              console.log('[Rankings] ✗ No custom rankings in database');
             }
           }
         } catch (err) {
@@ -1875,15 +1887,29 @@ export default function RankingsPage() {
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    marginBottom: '12px',
+                    marginBottom: watchlistCollapsed ? '0' : '12px',
                   }}
                 >
                   <h2 style={{ fontSize: '16px', fontWeight: '600', color: 'var(--text-primary)', margin: 0 }}>
                     Watchlist ({watchlistProspects.length})
                   </h2>
+                  <button
+                    onClick={() => setWatchlistCollapsed(!watchlistCollapsed)}
+                    style={{
+                      background: 'none',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: '4px',
+                      padding: '4px 10px',
+                      fontSize: '12px',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {watchlistCollapsed ? 'Expand' : 'Minimize'}
+                  </button>
                 </div>
 
-                {watchlistProspects.length === 0 ? (
+                {watchlistCollapsed ? null : watchlistProspects.length === 0 ? (
                   <p 
                     className="watchlist-empty"
                     style={{
