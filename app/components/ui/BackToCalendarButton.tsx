@@ -1,6 +1,8 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import Link from 'next/link';
 
 type BackToCalendarButtonProps = {
   onClick?: () => void;
@@ -8,27 +10,37 @@ type BackToCalendarButtonProps = {
 
 export function BackToCalendarButton({ onClick }: BackToCalendarButtonProps) {
   const router = useRouter();
+  const [isNavigating, setIsNavigating] = useState(false);
 
-  const handleClick = () => {
+  // Prefetch the home page on mount for faster navigation
+  useEffect(() => {
+    router.prefetch('/');
+  }, [router]);
+
+  const handleClick = (e: React.MouseEvent) => {
     if (onClick) {
+      e.preventDefault();
       onClick();
     } else {
-      router.push('/');
+      setIsNavigating(true);
+      // Navigation happens via Link href
     }
   };
 
   return (
-    <button className="back-to-calendar-button" onClick={handleClick}>
+    <Link 
+      href="/"
+      className="back-to-calendar-button"
+      onClick={handleClick}
+      style={{ 
+        opacity: isNavigating ? 0.6 : 1,
+        pointerEvents: isNavigating ? 'none' : 'auto',
+      }}
+    >
       <span className="back-to-calendar-icon" aria-hidden="true">
-        ←
+        {isNavigating ? '...' : '←'}
       </span>
-      <span>Back to Calendar</span>
-    </button>
+      <span>{isNavigating ? 'Loading...' : 'Back to Calendar'}</span>
+    </Link>
   );
 }
-
-
-
-
-
-
