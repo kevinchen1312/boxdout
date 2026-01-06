@@ -469,9 +469,9 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
             onSelectDate={setSelectedDate}
           />
           <SearchBox 
-            onClick={() => setSearchOpen(true)} 
-            onSelectTeam={handleSelectTeam}
-            onSelectProspect={handleSelectProspect}
+            allGamesFull={allGames}
+            onPickTeam={(t) => handleSelectTeam(t.name)}
+            onPickProspect={(p) => handleSelectProspect(p.id)}
           />
         </div>
 
