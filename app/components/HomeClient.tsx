@@ -470,7 +470,7 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
           />
           <SearchBox 
             allGamesFull={allGames}
-            onPickTeam={(t) => handleSelectTeam(t.name)}
+            onPickTeam={(t) => handleSelectTeam(t.label)}
             onPickProspect={(p) => handleSelectProspect(p.id)}
           />
         </div>
