@@ -71,6 +71,7 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
   const { isSignedIn } = useUser();
   const [sourceReady, setSourceReady] = useState(false); // Wait until we determine the correct source
   const [rankingSource, setRankingSource] = useState<RankingSource>(initialSource);
+  const [rankingsVersion, setRankingsVersion] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   
   // Read ranking source from localStorage on mount
@@ -86,18 +87,29 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
     const checkSource = async () => {
       const useMyBoard = localStorage.getItem('useMyBoard');
       let actualSource: RankingSource = useMyBoard === 'true' ? 'myboard' : 'espn';
+      let serverVersion: string | null = null;
       
-      // For signed-in users, check if they have custom rankings in database
-      // This enables cross-device sync - even on a new device with empty localStorage
-      if (isSignedIn && actualSource === 'espn') {
+      // For signed-in users, ALWAYS check for rankings version (for cross-device cache invalidation)
+      if (isSignedIn) {
         try {
           const response = await fetch('/api/my-rankings/check-custom', { cache: 'no-store' });
           if (response.ok) {
             const data = await response.json();
+            serverVersion = data.rankingsVersion;
+            
             if (data.hasCustomRankings) {
               console.log('[HomeClient] User has custom rankings in database, switching to myboard mode');
               actualSource = 'myboard';
               localStorage.setItem('useMyBoard', 'true');
+              
+              // Check if rankings version changed (cache invalidation)
+              const cachedVersion = localStorage.getItem('rankingsVersion');
+              if (cachedVersion !== serverVersion) {
+                console.log('[HomeClient] Rankings version changed, clearing game cache', { cachedVersion, serverVersion });
+                // Clear the cached game data so we fetch fresh with new rankings
+                localStorage.removeItem('prospectcal_cache_games_all_myboard');
+                localStorage.setItem('rankingsVersion', serverVersion || '');
+              }
             }
           }
         } catch (err) {
@@ -105,6 +117,7 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
         }
       }
       
+      setRankingsVersion(serverVersion);
       setRankingSource(actualSource);
       setSourceReady(true); // Now we're ready to load
     };
@@ -117,6 +130,7 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
     source: rankingSource, 
     ready: sourceReady,
     initialGames: undefined, // Don't use initial games - always fetch fresh for correct rankings
+    rankingsVersion, // Pass version for cache invalidation
   });
   
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null);

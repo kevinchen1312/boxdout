@@ -46,3 +46,4 @@ CREATE TRIGGER update_user_big_board_updated_at
 COMMENT ON TABLE user_big_board IS 'User-specific big board rankings - their custom ordering of prospects';
 
 
+

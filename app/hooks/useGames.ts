@@ -12,10 +12,11 @@ interface UseGamesOptions {
   source?: RankingSource;
   ready?: boolean; // If provided, wait until ready is true before loading
   initialGames?: GamesByDate; // Server-side pre-fetched games for instant display
+  rankingsVersion?: string | null; // Version from server to invalidate cache when rankings change
 }
 
 export function useGames(options: UseGamesOptions = {}) {
-  const { source = 'espn', ready = true, initialGames } = options;
+  const { source = 'espn', ready = true, initialGames, rankingsVersion } = options;
   // Use initial games if provided, otherwise empty object
   const [games, setGames] = useState<GamesByDate>(initialGames || {});
   const [gamesVersion, setGamesVersion] = useState(0); // Version counter to force re-renders

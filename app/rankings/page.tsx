@@ -1546,6 +1546,15 @@ export default function RankingsPage() {
         localStorage.setItem('useMyBoard', 'true');
       }
       
+      // Update rankings version to force cache invalidation on other devices
+      // Use current timestamp as the new version (database sets updated_at = now())
+      const newVersion = new Date().toISOString();
+      localStorage.setItem('rankingsVersion', newVersion);
+      console.log('[handleSave] Updated rankingsVersion:', newVersion);
+      
+      // Clear the cached game data so calendar fetches fresh with new rankings
+      localStorage.removeItem('prospectcal_cache_games_all_myboard');
+      
       // DON'T clear games cache - we'll update ranks in-place instead
       // This keeps gamecards visible and only updates rankings instantly
       console.log('[handleSave] Rankings saved, updating ranks in-place (not clearing games cache)');
