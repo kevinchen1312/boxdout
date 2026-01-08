@@ -133,12 +133,12 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
     checkCrossDeviceSync();
   }, [isSignedIn]);
 
-  // OPTIMIZATION: Always load ESPN games (fast, cached) then apply user rankings client-side
-  // This is faster than fetching user-specific games from the API
+  // OPTIMIZATION: Use server-prefetched ESPN games, apply user rankings client-side
+  // This gives instant page load + correct rankings
   const { games: espnGames, loading, error, loadingMessage, updating, fetchGames, refresh, updateProspectRanks } = useGames({ 
     source: 'espn', // Always use ESPN for fast loading
     ready: sourceReady,
-    initialGames: undefined,
+    initialGames: initialGames && Object.keys(initialGames).length > 0 ? initialGames : undefined, // Use server-prefetched data
     rankingsVersion,
   });
   
