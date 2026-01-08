@@ -151,6 +151,7 @@ export function useGames(options: UseGamesOptions = {}) {
       const forceReload = urlParams.get('forceReload') === 'true';
       const response = await fetch(`/api/games/all?source=${source}${forceReload || forceRefresh ? '&forceReload=true' : ''}`, {
         cache: 'no-store', // Force fresh fetch
+        credentials: 'include', // CRITICAL: Include auth cookies for user-specific rankings
       });
       console.timeEnd('[useGames] All games fetch time');
       
