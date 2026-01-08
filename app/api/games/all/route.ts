@@ -28,17 +28,63 @@ export async function GET(request: NextRequest) {
     const forceReload = searchParams.get('forceReload') === 'true';
     
     // For ESPN source: Use cache aggressively for fast loading
-    // User rankings are now applied client-side, so we don't need user-specific data here
-    // For myboard source: Need user data, bypass cache
-    const shouldBypassCache = forceReload || source === 'myboard';
+    // For myboard source: Try to use ESPN cache as base, then apply user rankings
+    // This is much faster than loading all schedules from scratch
     
-    // Only get userId for myboard source (saves auth call overhead for ESPN)
+    // Get userId for authentication
     let clerkUserId: string | undefined;
     if (source === 'myboard') {
       const { userId } = await auth();
       clerkUserId = userId || undefined;
       console.log(`[API/All] Auth check - userId: ${clerkUserId ? clerkUserId.substring(0, 10) + '...' : 'NOT LOGGED IN'}, source: ${source}`);
     }
+    
+    // OPTIMIZATION: For myboard, try to use ESPN cache as base and just apply user rankings
+    // This is MUCH faster than loading all schedules from scratch
+    if (source === 'myboard' && clerkUserId && !forceReload) {
+      console.time('[API/All] Fast myboard path');
+      const espnCacheKey = 'all_games_espn';
+      const espnCached = await getCachedGames(espnCacheKey, false);
+      
+      if (espnCached && espnCached.games && Object.keys(espnCached.games).length > 0) {
+        console.log('[API/All] Using ESPN cache as base for myboard - applying user rankings');
+        
+        try {
+          // Get user's rankings and apply them to ESPN cached games
+          const { bigBoard, watchlist } = await getBigBoardAndWatchlistProspects(source, clerkUserId);
+          console.log(`[API/All] Fast path: ${bigBoard.length} big board, ${watchlist.length} watchlist`);
+          
+          const trackedMap = buildTrackedPlayersMap(bigBoard, watchlist);
+          
+          // Decorate ESPN cached games with user's tracked players
+          const userGamesByDate: Record<string, typeof espnCached.games[string]> = {};
+          for (const [dateKey, games] of Object.entries(espnCached.games)) {
+            userGamesByDate[dateKey] = decorateGamesWithTrackedPlayers(games, trackedMap);
+          }
+          
+          console.timeEnd('[API/All] Fast myboard path');
+          console.log('[API/All] ✓ Fast path complete - returning user-ranked games from ESPN cache');
+          
+          return NextResponse.json(
+            { games: userGamesByDate, source },
+            {
+              headers: {
+                'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0',
+                'X-Cache-Status': 'FAST_PATH',
+                'X-Generated-At': new Date().toISOString(),
+              },
+            }
+          );
+        } catch (err) {
+          console.error('[API/All] Fast path failed, falling back to full load:', err);
+          // Fall through to full load below
+        }
+      }
+    }
+    
+    const shouldBypassCache = forceReload || source === 'myboard';
     
     // Try cache first (only if no user logged in and not forcing reload)
     let cachedData = null;

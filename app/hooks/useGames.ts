@@ -191,8 +191,74 @@ export function useGames(options: UseGamesOptions = {}) {
           // Cache looks complete - show it and DON'T do background revalidation
           // Background revalidation causes full reload which is what we're trying to avoid
           
-          // If we have pending rankings update, apply them to the cached games BEFORE showing
+          // CRITICAL FIX: For myboard source, ALWAYS fetch and apply current rankings
+          // This ensures cached games show correct rankings even on new devices or after cache expires
           let gamesToShow = cached;
+          
+          if (source === 'myboard' && !pendingRankingsUpdate) {
+            console.log('[useGames] myboard source: Fetching current rankings to apply to cached games');
+            try {
+              // Quick fetch of just rankings (not full games data)
+              const rankingsResponse = await fetch('/api/my-rankings?source=myboard&excludeWatchlist=false', {
+                cache: 'no-store',
+                credentials: 'include',
+              });
+              if (rankingsResponse.ok) {
+                const rankingsData = await rankingsResponse.json();
+                const prospects = rankingsData.prospects || [];
+                if (prospects.length > 0) {
+                  console.log(`[useGames] Applying ${prospects.length} current rankings to cached games`);
+                  const rankingsMap = new Map<string, { rank: number; isWatchlist: boolean }>();
+                  for (const r of prospects) {
+                    const key = (r.name || '').toLowerCase().trim();
+                    rankingsMap.set(key, { rank: r.rank, isWatchlist: !!r.isWatchlist });
+                  }
+                  
+                  // Apply rankings to all cached games
+                  gamesToShow = {};
+                  for (const [dateKey, dateGames] of Object.entries(cached)) {
+                    gamesToShow[dateKey] = dateGames.map(game => ({
+                      ...game,
+                      homeProspects: (game.homeProspects || []).map(p => {
+                        const updated = rankingsMap.get((p.name || '').toLowerCase().trim());
+                        if (updated) {
+                          return { ...p, rank: updated.rank, isWatchlist: updated.isWatchlist };
+                        }
+                        return p;
+                      }),
+                      awayProspects: (game.awayProspects || []).map(p => {
+                        const updated = rankingsMap.get((p.name || '').toLowerCase().trim());
+                        if (updated) {
+                          return { ...p, rank: updated.rank, isWatchlist: updated.isWatchlist };
+                        }
+                        return p;
+                      }),
+                      homeTrackedPlayers: (game.homeTrackedPlayers || []).map(p => {
+                        const updated = rankingsMap.get((p.playerName || '').toLowerCase().trim());
+                        if (updated) {
+                          return { ...p, rank: updated.rank, type: updated.isWatchlist ? 'watchlist' : 'myBoard' };
+                        }
+                        return p;
+                      }),
+                      awayTrackedPlayers: (game.awayTrackedPlayers || []).map(p => {
+                        const updated = rankingsMap.get((p.playerName || '').toLowerCase().trim());
+                        if (updated) {
+                          return { ...p, rank: updated.rank, type: updated.isWatchlist ? 'watchlist' : 'myBoard' };
+                        }
+                        return p;
+                      }),
+                    }));
+                  }
+                  console.log('[useGames] ✓ Current rankings applied to cached games');
+                }
+              } else {
+                console.warn('[useGames] Failed to fetch current rankings, using cached rankings');
+              }
+            } catch (err) {
+              console.warn('[useGames] Error fetching current rankings:', err);
+              // Continue with cached games even if rankings fetch fails
+            }
+          }
           if (pendingRankingsUpdate && pendingRankingsUpdate.rankings) {
             console.log('[useGames] Applying pending rankings update to cached games...');
             const rankings = pendingRankingsUpdate.rankings;
