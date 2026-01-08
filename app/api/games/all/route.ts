@@ -39,31 +39,62 @@ export async function GET(request: NextRequest) {
       console.log(`[API/All] Auth check - userId: ${clerkUserId ? clerkUserId.substring(0, 10) + '...' : 'NOT LOGGED IN'}, source: ${source}`);
     }
     
-    // OPTIMIZATION: For myboard, try to use ESPN cache as base and just apply user rankings
-    // This is MUCH faster than loading all schedules from scratch
+    // OPTIMIZATION: For myboard, ALWAYS use ESPN games as base and apply user rankings
+    // This is MUCH faster than loading all schedules from scratch (which times out)
     if (source === 'myboard' && clerkUserId && !forceReload) {
       console.time('[API/All] Fast myboard path');
       const espnCacheKey = 'all_games_espn';
+      let espnGames: Record<string, any[]> | null = null;
+      
+      // Try ESPN cache first
       const espnCached = await getCachedGames(espnCacheKey, false);
       
       if (espnCached && espnCached.games && Object.keys(espnCached.games).length > 0) {
-        console.log('[API/All] Using ESPN cache as base for myboard - applying user rankings');
-        
+        console.log('[API/All] Using ESPN cache as base for myboard');
+        espnGames = espnCached.games;
+      } else {
+        // ESPN cache doesn't exist - load ESPN games fresh and cache them
+        console.log('[API/All] ESPN cache empty - loading ESPN games fresh for myboard base');
+        console.time('[API/All] Fresh ESPN load');
         try {
-          // Get user's rankings and apply them to ESPN cached games
+          const { gamesByDate } = await loadAllSchedules('espn', false, undefined);
+          espnGames = gamesByDate;
+          
+          // Cache ESPN games for future requests
+          if (Object.keys(gamesByDate).length > 0) {
+            await setCachedGames(espnCacheKey, {
+              games: gamesByDate,
+              generatedAt: Date.now(),
+            });
+            console.log('[API/All] Cached fresh ESPN games for future requests');
+          }
+          console.timeEnd('[API/All] Fresh ESPN load');
+        } catch (err) {
+          console.error('[API/All] Failed to load ESPN games:', err);
+          // Return error - don't try the slow myboard path
+          return NextResponse.json(
+            { error: 'Failed to load game schedules', games: {} },
+            { status: 500 }
+          );
+        }
+      }
+      
+      if (espnGames && Object.keys(espnGames).length > 0) {
+        try {
+          // Get user's rankings and apply them to ESPN games
           const { bigBoard, watchlist } = await getBigBoardAndWatchlistProspects(source, clerkUserId);
           console.log(`[API/All] Fast path: ${bigBoard.length} big board, ${watchlist.length} watchlist`);
           
           const trackedMap = buildTrackedPlayersMap(bigBoard, watchlist);
           
-          // Decorate ESPN cached games with user's tracked players
-          const userGamesByDate: Record<string, typeof espnCached.games[string]> = {};
-          for (const [dateKey, games] of Object.entries(espnCached.games)) {
+          // Decorate ESPN games with user's tracked players
+          const userGamesByDate: Record<string, typeof espnGames[string]> = {};
+          for (const [dateKey, games] of Object.entries(espnGames)) {
             userGamesByDate[dateKey] = decorateGamesWithTrackedPlayers(games, trackedMap);
           }
           
           console.timeEnd('[API/All] Fast myboard path');
-          console.log('[API/All] ✓ Fast path complete - returning user-ranked games from ESPN cache');
+          console.log('[API/All] ✓ Fast path complete - returning user-ranked games');
           
           return NextResponse.json(
             { games: userGamesByDate, source },
@@ -78,8 +109,18 @@ export async function GET(request: NextRequest) {
             }
           );
         } catch (err) {
-          console.error('[API/All] Fast path failed, falling back to full load:', err);
-          // Fall through to full load below
+          console.error('[API/All] Fast path failed to apply rankings:', err);
+          // Return ESPN games without user rankings as fallback
+          return NextResponse.json(
+            { games: espnGames, source: 'espn' },
+            {
+              headers: {
+                'Cache-Control': 'no-store',
+                'X-Cache-Status': 'FALLBACK',
+                'X-Generated-At': new Date().toISOString(),
+              },
+            }
+          );
         }
       }
     }
