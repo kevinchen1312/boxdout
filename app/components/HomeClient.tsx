@@ -69,68 +69,74 @@ interface HomeClientProps {
 
 export default function HomeClient({ initialGames, initialSource }: HomeClientProps) {
   const { isSignedIn } = useUser();
-  const [sourceReady, setSourceReady] = useState(false); // Wait until we determine the correct source
-  const [rankingSource, setRankingSource] = useState<RankingSource>(initialSource);
-  const [rankingsVersion, setRankingsVersion] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   
-  // Read ranking source from localStorage on mount
-  // For signed-in users, check database for custom rankings (cross-device sync)
+  // Read from localStorage immediately for fast startup
+  const [rankingSource, setRankingSource] = useState<RankingSource>(() => {
+    if (typeof window === 'undefined') return initialSource;
+    return localStorage.getItem('useMyBoard') === 'true' ? 'myboard' : 'espn';
+  });
+  const [rankingsVersion, setRankingsVersion] = useState<string | null>(null);
+  
+  // Start loading immediately with localStorage preference - don't wait for auth
+  const [sourceReady, setSourceReady] = useState(true);
+  
+  // Set mounted on client
   useEffect(() => {
     setMounted(true);
-    
-    // Wait for auth to be determined before checking source
-    if (isSignedIn === undefined) {
+  }, []);
+  
+  // For signed-in users, check database for custom rankings (cross-device sync)
+  // This runs IN PARALLEL with the initial load, then updates if needed
+  useEffect(() => {
+    // Skip if not signed in or auth still loading
+    if (isSignedIn !== true) {
       return;
     }
     
-    const checkSource = async () => {
-      const useMyBoard = localStorage.getItem('useMyBoard');
-      let actualSource: RankingSource = useMyBoard === 'true' ? 'myboard' : 'espn';
-      let serverVersion: string | null = null;
-      
-      // For signed-in users, ALWAYS check for rankings version (for cross-device cache invalidation)
-      if (isSignedIn) {
-        try {
-          const response = await fetch('/api/my-rankings/check-custom', { cache: 'no-store' });
-          if (response.ok) {
-            const data = await response.json();
-            serverVersion = data.rankingsVersion;
+    const checkCrossDeviceSync = async () => {
+      try {
+        const response = await fetch('/api/my-rankings/check-custom', { cache: 'no-store' });
+        if (response.ok) {
+          const data = await response.json();
+          const serverVersion = data.rankingsVersion;
+          
+          if (data.hasCustomRankings) {
+            const cachedVersion = localStorage.getItem('rankingsVersion');
+            const currentSource = localStorage.getItem('useMyBoard') === 'true' ? 'myboard' : 'espn';
             
-            if (data.hasCustomRankings) {
-              console.log('[HomeClient] User has custom rankings in database, switching to myboard mode');
-              actualSource = 'myboard';
+            // Check if we need to switch to myboard or invalidate cache
+            const needsSourceSwitch = currentSource === 'espn';
+            const needsCacheInvalidation = cachedVersion !== serverVersion;
+            
+            if (needsSourceSwitch || needsCacheInvalidation) {
+              console.log('[HomeClient] Cross-device sync detected', { needsSourceSwitch, needsCacheInvalidation, cachedVersion, serverVersion });
+              
+              // Clear the cached game data so we fetch fresh with new rankings
+              localStorage.removeItem('prospectcal_cache_games_all_myboard');
+              localStorage.setItem('rankingsVersion', serverVersion || '');
               localStorage.setItem('useMyBoard', 'true');
               
-              // Check if rankings version changed (cache invalidation)
-              const cachedVersion = localStorage.getItem('rankingsVersion');
-              if (cachedVersion !== serverVersion) {
-                console.log('[HomeClient] Rankings version changed, clearing game cache', { cachedVersion, serverVersion });
-                // Clear the cached game data so we fetch fresh with new rankings
-                localStorage.removeItem('prospectcal_cache_games_all_myboard');
-                localStorage.setItem('rankingsVersion', serverVersion || '');
-              }
+              // Update state to trigger refetch with correct rankings
+              setRankingsVersion(serverVersion);
+              setRankingSource('myboard');
             }
           }
-        } catch (err) {
-          console.warn('[HomeClient] Failed to check for custom rankings:', err);
         }
+      } catch (err) {
+        console.warn('[HomeClient] Failed to check for custom rankings:', err);
       }
-      
-      setRankingsVersion(serverVersion);
-      setRankingSource(actualSource);
-      setSourceReady(true); // Now we're ready to load
     };
     
-    checkSource();
-  }, [initialSource, isSignedIn]);
+    checkCrossDeviceSync();
+  }, [isSignedIn]);
 
-  // Pass initial games to useGames hook
+  // Pass initial games to useGames hook - start loading immediately
   const { games, loading, error, loadingMessage, updating, fetchGames, refresh, updateProspectRanks } = useGames({ 
     source: rankingSource, 
     ready: sourceReady,
-    initialGames: undefined, // Don't use initial games - always fetch fresh for correct rankings
-    rankingsVersion, // Pass version for cache invalidation
+    initialGames: undefined,
+    rankingsVersion,
   });
   
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null);
