@@ -27,6 +27,7 @@ export async function GET(request: NextRequest) {
     // Get userId for both sources (needed for watchlist players in both, custom players in 'myboard')
     const { userId } = await auth();
     const clerkUserId = userId || undefined;
+    console.log(`[API/All] Auth check - userId: ${clerkUserId ? clerkUserId.substring(0, 10) + '...' : 'NOT LOGGED IN'}, source: ${source}`);
     
     // Check for force reload parameter (for testing/debugging)
     const forceReload = searchParams.get('forceReload') === 'true';
@@ -102,6 +103,17 @@ export async function GET(request: NextRequest) {
         console.log(`[API/All] Building tracked players map for source=${source}, userId=${clerkUserId}`);
         const { bigBoard, watchlist } = await getBigBoardAndWatchlistProspects(source, clerkUserId);
         console.log(`[API/All] Loaded ${bigBoard.length} big board prospects, ${watchlist.length} watchlist prospects`);
+        
+        // Debug: Check specific players to verify correct separation
+        const dashInBigBoard = bigBoard.find(p => p.name?.toLowerCase().includes('dash'));
+        const dashInWatchlist = watchlist.find(p => p.name?.toLowerCase().includes('dash'));
+        const jaydenInBigBoard = bigBoard.find(p => p.name?.toLowerCase().includes('jayden') && p.name?.toLowerCase().includes('quaintance'));
+        console.log(`[API/All] DEBUG - Dash Daniels in bigBoard: ${dashInBigBoard ? `YES rank=${dashInBigBoard.rank}` : 'NO'}`);
+        console.log(`[API/All] DEBUG - Dash Daniels in watchlist: ${dashInWatchlist ? `YES isWatchlist=${dashInWatchlist.isWatchlist}` : 'NO'}`);
+        console.log(`[API/All] DEBUG - Jayden Quaintance in bigBoard: ${jaydenInBigBoard ? `YES rank=${jaydenInBigBoard.rank}` : 'NO'}`);
+        console.log(`[API/All] DEBUG - Big board top 5:`, bigBoard.slice(0, 5).map(p => `${p.rank}. ${p.name}`));
+        console.log(`[API/All] DEBUG - Watchlist first 5:`, watchlist.slice(0, 5).map(p => `${p.name} (isWatchlist=${p.isWatchlist})`));
+        
         const trackedMap = buildTrackedPlayersMap(bigBoard, watchlist);
         console.log(`[API/All] Built tracked map with ${Object.keys(trackedMap).length} entries`);
         
