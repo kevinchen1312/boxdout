@@ -34,6 +34,7 @@ export function useGames(options: UseGamesOptions = {}) {
   hasGamesRef.current = Object.keys(games).length > 0;
 
   // Function to load games data (extracted for reuse)
+  // SIMPLIFIED APPROACH: Always fetch ESPN games (fast, cached) and apply user rankings client-side
   const loadGamesData = useCallback(async (forceRefresh = false, signal?: AbortSignal) => {
     // CRITICAL: Don't reload if we're currently merging games
     if (isMergingRef.current) {
@@ -50,521 +51,132 @@ export function useGames(options: UseGamesOptions = {}) {
     
     try {
       console.time('[useGames] Total load time');
-      // Only set loading=true if we don't have any games yet
-      // This prevents the loading skeleton from flashing during background refreshes
+      
+      // Only show loading if we have no games yet
       if (!hasGamesRef.current) {
         setLoading(true);
         setLoadingMessage('Loading...');
       }
       
-      // Clear expired cache entries on mount (async, non-blocking)
+      // Clear expired cache entries (non-blocking)
       setTimeout(() => clearExpiredCache(), 0);
       
-      // If force refresh, clear cache first
-      if (forceRefresh) {
-        const cacheKey = `games_all_${source}`;
-        clearCacheByKey(cacheKey);
+      // STEP 1: Try to get ESPN games from cache (fast path)
+      const espnCacheKey = 'games_all_espn';
+      let espnGames: GamesByDate | null = null;
+      
+      if (!forceRefresh) {
+        try {
+          espnGames = getCachedData<GamesByDate>(espnCacheKey) || getStaleCachedData<GamesByDate>(espnCacheKey);
+          if (espnGames && Object.keys(espnGames).length > 5) {
+            console.log(`[useGames] Found ESPN cache: ${Object.values(espnGames).flat().length} games`);
+          } else {
+            espnGames = null;
+          }
+        } catch (err) {
+          console.warn('[useGames] Cache read failed:', err);
+        }
       }
       
-      // Try to get from cache first (with error handling for browsers that block localStorage)
-      let cached: GamesByDate | null = null;
-      const rankingsVersion = typeof window !== 'undefined' ? localStorage.getItem('rankingsVersion') : null;
+      // STEP 2: For myboard source, we need user's rankings
+      let userRankings: Array<{ name: string; rank: number; isWatchlist: boolean }> | null = null;
       
-      // Check if there's a pending rankings update - if so, we can use OLD cache + apply new rankings
-      let pendingRankingsUpdate: { rankings: Array<{ name: string; team: string; rank: number; isWatchlist?: boolean }> } | null = null;
-      if (source === 'myboard' && typeof window !== 'undefined') {
+      if (source === 'myboard') {
+        // Check for pending rankings update first (from recent save)
         try {
           const stored = localStorage.getItem('rankingsUpdated');
           if (stored) {
             const data = JSON.parse(stored);
-            // Check if this is a recent update (within 30 seconds)
-            if (data.timestamp && (Date.now() - data.timestamp) < 30000 && data.rankings) {
-              pendingRankingsUpdate = data;
-              console.log('[useGames] Found pending rankings update, will apply to cached games');
+            if (data.timestamp && (Date.now() - data.timestamp) < 60000 && data.rankings) {
+              userRankings = data.rankings;
+              console.log(`[useGames] Using pending rankings: ${userRankings?.length} prospects`);
             }
           }
-        } catch (err) {
-          // Ignore
-        }
-      }
-      
-      // For myboard, include rankings version in cache key so it auto-invalidates when rankings change
-      const cacheKey = source === 'myboard' && rankingsVersion 
-        ? `games_all_${source}_v${rankingsVersion.substring(0, 10)}` // Use first 10 chars of version timestamp
-        : `games_all_${source}`;
-      
-      if (!forceRefresh) {
-        try {
-          // First try current version cache
-          cached = getCachedData<GamesByDate>(cacheKey);
-          if (!cached) {
-            cached = getStaleCachedData<GamesByDate>(cacheKey);
-          }
-          
-          // For myboard source, also try to find ANY myboard cache (even without version)
-          // This helps on first load when cache might exist from previous session
-          if (!cached && source === 'myboard') {
-            console.log('[useGames] No versioned cache, searching for any myboard cache...');
-            const keys = Object.keys(localStorage);
-            for (const key of keys) {
-              if (key.includes('prospectcal_cache_games_all_myboard')) {
-                try {
-                  const foundCache = getStaleCachedData<GamesByDate>(key.replace('prospectcal_cache_', ''));
-                  if (foundCache && Object.keys(foundCache).length > 5) {
-                    cached = foundCache;
-                    console.log('[useGames] Found myboard cache from previous session, using it');
-                    break;
-                  }
-                } catch { /* ignore */ }
-              }
-            }
-          }
-          
-          // For ESPN source, also try to find ANY ESPN cache (even if key doesn't match exactly)
-          // This helps on first load when cache might exist from previous session
-          if (!cached && source === 'espn') {
-            console.log('[useGames] No exact cache match, searching for any ESPN cache...');
-            const keys = Object.keys(localStorage);
-            for (const key of keys) {
-              if (key.includes('prospectcal_cache_games_all_espn')) {
-                try {
-                  const foundCache = getStaleCachedData<GamesByDate>(key.replace('prospectcal_cache_', ''));
-                  if (foundCache && Object.keys(foundCache).length > 5) {
-                    cached = foundCache;
-                    console.log('[useGames] Found ESPN cache from previous session, using it');
-                    break;
-                  }
-                } catch { /* ignore */ }
-              }
-            }
-          }
-          
-          // If no cache found but we have pending rankings, try to find ANY myboard cache
-          // We can apply the new rankings to it instead of fetching fresh
-          if (!cached && pendingRankingsUpdate && source === 'myboard') {
-            console.log('[useGames] No versioned cache, searching for any myboard cache to update...');
-            // Try old cache keys (iterate localStorage)
-            const keys = Object.keys(localStorage);
-            for (const key of keys) {
-              if (key.includes('games_all_myboard')) {
-                try {
-                  const oldCached = getStaleCachedData<GamesByDate>(key.replace('prospectcal_cache_', ''));
-                  if (oldCached && Object.keys(oldCached).length > 5) {
-                    cached = oldCached;
-                    console.log('[useGames] Found old myboard cache, will apply new rankings');
-                    break;
-                  }
-                } catch { /* ignore */ }
-              }
-            }
-          }
-          
-          if (cached && source === 'myboard') {
-            console.log(`[useGames] Using cached myboard data (version: ${rankingsVersion?.substring(0, 10)})`);
-          }
-        } catch (err) {
-          console.warn('[useGames] Cache read failed (localStorage may be disabled):', err);
-        }
-      }
-      
-      // If we have cached data (fresh or stale), show it immediately
-      // Only do background revalidation if cache seems incomplete
-      if (cached && alive && Object.keys(cached).length > 0) {
-        const cachedGamesCount = Object.values(cached).flat().length;
-        const cachedDatesCount = Object.keys(cached).length;
-        console.log(`[useGames] Showing cached games immediately: ${cachedGamesCount} games across ${cachedDatesCount} dates`);
+        } catch { /* ignore */ }
         
-        // Check if cache seems incomplete (very few games or only one date)
-        // If so, trigger immediate refresh instead of using incomplete cache
-        const seemsIncomplete = cachedGamesCount < 10 || cachedDatesCount === 1;
-        if (seemsIncomplete) {
-          console.warn(`[useGames] ⚠️ Cache seems incomplete (${cachedGamesCount} games, ${cachedDatesCount} dates). Triggering immediate refresh.`);
-          // Clear cache and fetch fresh data
+        // If no pending rankings and we have cached games, fetch rankings now
+        if (!userRankings && espnGames) {
+          console.log('[useGames] Fetching user rankings...');
           try {
-            const cacheKey = `games_all_${source}`;
-            clearCacheByKey(cacheKey);
-          } catch (err) {
-            console.warn('[useGames] Failed to clear cache:', err);
-          }
-          // Continue to fetch fresh data below instead of returning
-        } else {
-          // Cache looks complete - show it and DON'T do background revalidation
-          // Background revalidation causes full reload which is what we're trying to avoid
-          
-          // CRITICAL FIX: For myboard source, ALWAYS fetch and apply current rankings
-          // This ensures cached games show correct rankings even on new devices or after cache expires
-          let gamesToShow = cached;
-          
-          if (source === 'myboard' && !pendingRankingsUpdate) {
-            console.log('[useGames] myboard source: Fetching current rankings to apply to cached games');
-            try {
-              // Quick fetch of just rankings (not full games data)
-              const rankingsResponse = await fetch('/api/my-rankings?source=myboard&excludeWatchlist=false', {
-                cache: 'no-store',
-                credentials: 'include',
-              });
-              if (rankingsResponse.ok) {
-                const rankingsData = await rankingsResponse.json();
-                const prospects = rankingsData.prospects || [];
-                if (prospects.length > 0) {
-                  console.log(`[useGames] Applying ${prospects.length} current rankings to cached games`);
-                  const rankingsMap = new Map<string, { rank: number; isWatchlist: boolean }>();
-                  for (const r of prospects) {
-                    const key = (r.name || '').toLowerCase().trim();
-                    rankingsMap.set(key, { rank: r.rank, isWatchlist: !!r.isWatchlist });
-                  }
-                  
-                  // Apply rankings to all cached games
-                  gamesToShow = {};
-                  for (const [dateKey, dateGames] of Object.entries(cached)) {
-                    gamesToShow[dateKey] = dateGames.map(game => ({
-                      ...game,
-                      homeProspects: (game.homeProspects || []).map(p => {
-                        const updated = rankingsMap.get((p.name || '').toLowerCase().trim());
-                        if (updated) {
-                          return { ...p, rank: updated.rank, isWatchlist: updated.isWatchlist };
-                        }
-                        return p;
-                      }),
-                      awayProspects: (game.awayProspects || []).map(p => {
-                        const updated = rankingsMap.get((p.name || '').toLowerCase().trim());
-                        if (updated) {
-                          return { ...p, rank: updated.rank, isWatchlist: updated.isWatchlist };
-                        }
-                        return p;
-                      }),
-                      homeTrackedPlayers: (game.homeTrackedPlayers || []).map(p => {
-                        const updated = rankingsMap.get((p.playerName || '').toLowerCase().trim());
-                        if (updated) {
-                          return { ...p, rank: updated.rank, type: updated.isWatchlist ? 'watchlist' : 'myBoard' };
-                        }
-                        return p;
-                      }),
-                      awayTrackedPlayers: (game.awayTrackedPlayers || []).map(p => {
-                        const updated = rankingsMap.get((p.playerName || '').toLowerCase().trim());
-                        if (updated) {
-                          return { ...p, rank: updated.rank, type: updated.isWatchlist ? 'watchlist' : 'myBoard' };
-                        }
-                        return p;
-                      }),
-                    }));
-                  }
-                  console.log('[useGames] ✓ Current rankings applied to cached games');
-                }
-              } else {
-                console.warn('[useGames] Failed to fetch current rankings, using cached rankings');
-              }
-            } catch (err) {
-              console.warn('[useGames] Error fetching current rankings:', err);
-              // Continue with cached games even if rankings fetch fails
-            }
-          }
-          if (pendingRankingsUpdate && pendingRankingsUpdate.rankings) {
-            console.log('[useGames] Applying pending rankings update to cached games...');
-            const rankings = pendingRankingsUpdate.rankings;
-            const rankingsMap = new Map<string, { rank: number; isWatchlist: boolean }>();
-            for (const r of rankings) {
-              const key = r.name.toLowerCase().trim();
-              rankingsMap.set(key, { rank: r.rank, isWatchlist: !!r.isWatchlist });
-            }
-            
-            // Update ranks in all games
-            gamesToShow = {};
-            for (const [dateKey, dateGames] of Object.entries(cached)) {
-              gamesToShow[dateKey] = dateGames.map(game => ({
-                ...game,
-                homeProspects: (game.homeProspects || []).map(p => {
-                  const updated = rankingsMap.get(p.name?.toLowerCase().trim() || '');
-                  if (updated) {
-                    return { ...p, rank: updated.rank, isWatchlist: updated.isWatchlist };
-                  }
-                  return p;
-                }),
-                awayProspects: (game.awayProspects || []).map(p => {
-                  const updated = rankingsMap.get(p.name?.toLowerCase().trim() || '');
-                  if (updated) {
-                    return { ...p, rank: updated.rank, isWatchlist: updated.isWatchlist };
-                  }
-                  return p;
-                }),
-                homeTrackedPlayers: (game.homeTrackedPlayers || []).map(p => {
-                  const updated = rankingsMap.get(p.playerName?.toLowerCase().trim() || '');
-                  if (updated) {
-                    return { ...p, rank: updated.rank, type: updated.isWatchlist ? 'watchlist' : 'myBoard' };
-                  }
-                  return p;
-                }),
-                awayTrackedPlayers: (game.awayTrackedPlayers || []).map(p => {
-                  const updated = rankingsMap.get(p.playerName?.toLowerCase().trim() || '');
-                  if (updated) {
-                    return { ...p, rank: updated.rank, type: updated.isWatchlist ? 'watchlist' : 'myBoard' };
-                  }
-                  return p;
-                }),
-              }));
-            }
-            console.log('[useGames] ✓ Rankings applied to cached games');
-            
-            // Clear the pending update so we don't re-apply it
-            try {
-              localStorage.removeItem('rankingsUpdated');
-            } catch { /* ignore */ }
-          }
-          
-          setGames(gamesToShow);
-          setLoading(false); // Don't show loading spinner - we have data to show
-          loadedSourceRef.current = source;
-          console.timeEnd('[useGames] Total load time');
-          console.log('[useGames] ✓ Using cached games. New players will be merged instantly via events.');
-          return;
-        }
-        // If cache was incomplete, fall through to fetch fresh data
-      }
-      
-      // No cache available - must fetch fresh data
-      // Only show loading spinner if we truly have no data
-      setLoadingMessage('Loading schedules...');
-      
-      // Phase 1: Load today's games first for quick display
-      console.time('[useGames] Today fetch time');
-      const todayController = new AbortController();
-      const todayTimeoutId = setTimeout(() => {
-        todayController.abort();
-      }, 15000); // 15 second timeout for today's games
-      
-      let todayResponse: Response;
-      try {
-        todayResponse = await fetch(`/api/games/today?source=${source}`, {
-          cache: 'no-store',
-          credentials: 'include', // Include auth for myboard source
-          signal: todayController.signal,
-        });
-        clearTimeout(todayTimeoutId);
-      } catch (err) {
-        clearTimeout(todayTimeoutId);
-        if (err instanceof Error && err.name === 'AbortError') {
-          console.warn('[useGames] Today fetch timed out, continuing with full fetch');
-          todayResponse = { ok: false } as Response;
-        } else {
-          throw err;
-        }
-      }
-      console.timeEnd('[useGames] Today fetch time');
-      
-      if (todayResponse.ok) {
-        const todayData = await todayResponse.json();
-        const todayGames = (todayData.games ?? {}) as GamesByDate;
-        
-        if (alive && Object.keys(todayGames).length > 0) {
-          setGames(todayGames);
-          setLoadingMessage('Loading remaining schedules...');
-          console.log(`[useGames] Loaded ${Object.keys(todayGames).length} date(s) with today's games`);
-        }
-      } else {
-        console.warn(`[useGames] Today's games fetch failed: ${todayResponse.status}`);
-      }
-      
-      // Phase 2: Load all games in the background
-      setLoadingMessage('Loading all schedules...');
-      console.time('[useGames] All games fetch time');
-      // Check URL for forceReload parameter to bypass cache
-      const urlParams = new URLSearchParams(window.location.search);
-      const forceReload = urlParams.get('forceReload') === 'true';
-      
-      // Add timeout to prevent hanging
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        controller.abort();
-      }, 30000); // 30 second timeout
-      
-      let response: Response;
-      try {
-        response = await fetch(`/api/games/all?source=${source}${forceReload || forceRefresh ? '&forceReload=true' : ''}`, {
-          cache: 'no-store', // Force fresh fetch
-          credentials: 'include', // CRITICAL: Include auth cookies for user-specific rankings
-          signal: controller.signal,
-        });
-        clearTimeout(timeoutId);
-      } catch (err) {
-        clearTimeout(timeoutId);
-        if (err instanceof Error && err.name === 'AbortError') {
-          console.error('[useGames] Request timed out after 30 seconds');
-          throw new Error('Request timed out. Please try again.');
-        }
-        throw err;
-      }
-      console.timeEnd('[useGames] All games fetch time');
-      
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error');
-        console.error(`[useGames] API error ${response.status}:`, errorText);
-        throw new Error(`Failed to load games: ${response.status} ${response.statusText}`);
-      }
-      
-      setLoadingMessage('Processing game data...');
-      console.time('[useGames] JSON parse time');
-      const data = await response.json();
-      console.timeEnd('[useGames] JSON parse time');
-      const gamesByDate = (data.games ?? {}) as GamesByDate;
-      
-      // Debug: Check if games have tracked players arrays (client-side logging)
-      if (alive && gamesByDate) {
-        let gamesWithTracked = 0;
-        let gamesWithoutTracked = 0;
-        let pokuGamesWithTracked = 0;
-        let pokuGamesWithoutTracked = 0;
-        const pokuGamesMissing: Array<{ id: string; date: string; homeTeam: string; awayTeam: string }> = [];
-        
-        for (const games of Object.values(gamesByDate) as GameWithProspects[][]) {
-          for (const game of games) {
-            const hasTracked = !!(game.homeTrackedPlayers || game.awayTrackedPlayers);
-            if (hasTracked) {
-              gamesWithTracked++;
-              const hasPoku = (game.homeTrackedPlayers || []).some(p => p.playerName.toLowerCase().includes('pokusevski')) ||
-                             (game.awayTrackedPlayers || []).some(p => p.playerName.toLowerCase().includes('pokusevski'));
-              if (hasPoku) pokuGamesWithTracked++;
-            } else {
-              gamesWithoutTracked++;
-              const isPartizan = (game.homeTeam?.displayName || game.homeTeam?.name || '').toLowerCase().includes('partizan') ||
-                                (game.awayTeam?.displayName || game.awayTeam?.name || '').toLowerCase().includes('partizan');
-              const hasPokuInProspects = (game.homeProspects || []).some(p => p.name.toLowerCase().includes('pokusevski')) ||
-                                         (game.awayProspects || []).some(p => p.name.toLowerCase().includes('pokusevski'));
-              if (isPartizan && hasPokuInProspects) {
-                pokuGamesWithoutTracked++;
-                pokuGamesMissing.push({
-                  id: game.id,
-                  date: game.dateKey || game.date.substring(0, 10),
-                  homeTeam: game.homeTeam?.displayName || game.homeTeam?.name || '',
-                  awayTeam: game.awayTeam?.displayName || game.awayTeam?.name || '',
-                });
-              }
-            }
-          }
-        }
-        
-        console.log(`[useGames] 📊 Games decoration status:`, {
-          totalGames: gamesWithTracked + gamesWithoutTracked,
-          gamesWithTrackedPlayers: gamesWithTracked,
-          gamesWithoutTrackedPlayers: gamesWithoutTracked,
-          pokuGamesWithTracked: pokuGamesWithTracked,
-          pokuGamesWithoutTracked: pokuGamesWithoutTracked,
-        });
-        
-        if (pokuGamesMissing.length > 0) {
-          console.warn(`[useGames] ⚠️ Found ${pokuGamesMissing.length} Partizan games with Pokusevski in prospects but NO tracked players:`, pokuGamesMissing.slice(0, 10));
-        }
-      }
-      
-      if (alive) {
-        // CRITICAL: Apply any pending ranking updates from localStorage before setting state
-        // This ensures that if user changed rankings on rankings page, those changes are reflected
-        let finalGames = gamesByDate;
-        if (source === 'myboard') {
-          try {
-            const storedRankings = localStorage.getItem('rankingsUpdated');
-            if (storedRankings) {
-              const data = JSON.parse(storedRankings);
-              if (data.rankings && Array.isArray(data.rankings) && data.rankings.length > 0) {
-                console.log(`[useGames] Applying ${data.rankings.length} pending ranking updates to network data`);
-                const rankMap = new Map<string, { rank: number; isWatchlist: boolean }>();
-                for (const prospect of data.rankings) {
-                  const name = (prospect.name || '').toLowerCase().trim();
-                  const team = (prospect.team || prospect.teamDisplay || '').toLowerCase().trim().replace(/\s+/g, ' ');
-                  const key = `${name}|${team}`;
-                  rankMap.set(key, { rank: prospect.rank || 0, isWatchlist: prospect.isWatchlist || false });
-                }
-                
-                const updatedGames: GamesByDate = {};
-                for (const [dateKey, gamesForDate] of Object.entries(gamesByDate)) {
-                  updatedGames[dateKey] = gamesForDate.map((game: any) => {
-                    const updatePlayer = (player: any) => {
-                      const name = (player.playerName || player.name || '').toLowerCase().trim();
-                      const team = (player.team || player.teamDisplay || '').toLowerCase().trim().replace(/\s+/g, ' ');
-                      const key = `${name}|${team}`;
-                      const rankInfo = rankMap.get(key);
-                      if (rankInfo) {
-                        return { ...player, rank: rankInfo.rank, type: rankInfo.isWatchlist ? 'watchlist' : 'myBoard' };
-                      }
-                      // Also try name-only match
-                      for (const [mapKey, info] of rankMap.entries()) {
-                        if (mapKey.startsWith(`${name}|`)) {
-                          return { ...player, rank: info.rank, type: info.isWatchlist ? 'watchlist' : 'myBoard' };
-                        }
-                      }
-                      return player;
-                    };
-                    
-                    return {
-                      ...game,
-                      prospects: (game.prospects || []).map(updatePlayer),
-                      homeProspects: (game.homeProspects || []).map(updatePlayer),
-                      awayProspects: (game.awayProspects || []).map(updatePlayer),
-                      homeTrackedPlayers: (game.homeTrackedPlayers || []).map(updatePlayer),
-                      awayTrackedPlayers: (game.awayTrackedPlayers || []).map(updatePlayer),
-                    };
-                  });
-                }
-                finalGames = updatedGames;
-                console.log(`[useGames] Rankings applied to network data`);
+            const rankingsResponse = await fetch('/api/my-rankings?source=myboard&excludeWatchlist=false', {
+              cache: 'no-store',
+              credentials: 'include',
+            });
+            if (rankingsResponse.ok) {
+              const data = await rankingsResponse.json();
+              if (data.prospects && data.prospects.length > 0) {
+                userRankings = data.prospects.map((p: any) => ({
+                  name: p.name,
+                  rank: p.rank,
+                  isWatchlist: !!p.isWatchlist,
+                }));
+                console.log(`[useGames] Loaded ${userRankings?.length} user rankings`);
               }
             }
           } catch (err) {
-            console.warn('[useGames] Failed to apply pending rankings to network data:', err);
+            console.warn('[useGames] Failed to fetch rankings:', err);
           }
         }
+      }
+      
+      // STEP 3: If we have ESPN games cached, apply rankings and show immediately
+      if (espnGames && alive) {
+        let gamesToShow = espnGames;
         
-        setGames(finalGames);
+        // Apply user rankings if we have them (for myboard source)
+        if (source === 'myboard' && userRankings && userRankings.length > 0) {
+          console.log('[useGames] Applying user rankings to ESPN games...');
+          const rankingsMap = new Map<string, { rank: number; isWatchlist: boolean }>();
+          for (const r of userRankings) {
+            const key = (r.name || '').toLowerCase().trim();
+            rankingsMap.set(key, { rank: r.rank, isWatchlist: r.isWatchlist });
+          }
+          
+          gamesToShow = {};
+          for (const [dateKey, dateGames] of Object.entries(espnGames)) {
+            gamesToShow[dateKey] = dateGames.map(game => ({
+              ...game,
+              homeProspects: (game.homeProspects || []).map(p => {
+                const updated = rankingsMap.get((p.name || '').toLowerCase().trim());
+                return updated ? { ...p, rank: updated.rank, isWatchlist: updated.isWatchlist } : p;
+              }),
+              awayProspects: (game.awayProspects || []).map(p => {
+                const updated = rankingsMap.get((p.name || '').toLowerCase().trim());
+                return updated ? { ...p, rank: updated.rank, isWatchlist: updated.isWatchlist } : p;
+              }),
+              homeTrackedPlayers: (game.homeTrackedPlayers || []).map(p => {
+                const updated = rankingsMap.get((p.playerName || '').toLowerCase().trim());
+                return updated ? { ...p, rank: updated.rank, type: updated.isWatchlist ? 'watchlist' : 'myBoard' } : p;
+              }),
+              awayTrackedPlayers: (game.awayTrackedPlayers || []).map(p => {
+                const updated = rankingsMap.get((p.playerName || '').toLowerCase().trim());
+                return updated ? { ...p, rank: updated.rank, type: updated.isWatchlist ? 'watchlist' : 'myBoard' } : p;
+              }),
+            }));
+          }
+          console.log('[useGames] ✓ User rankings applied');
+        }
+        
+        setGames(gamesToShow);
         setLoading(false);
-        setLoadingMessage('Loaded successfully ✓');
         loadedSourceRef.current = source;
+        console.timeEnd('[useGames] Total load time');
+        console.log('[useGames] ✓ Fast path complete - using cached ESPN games with user rankings');
         
-        // Store in cache for next time (with error handling)
-        // For myboard, use version-aware cache key that auto-invalidates when rankings change
-        try {
-          const rankingsVersion = typeof window !== 'undefined' ? localStorage.getItem('rankingsVersion') : null;
-          const storeCacheKey = source === 'myboard' && rankingsVersion 
-            ? `games_all_${source}_v${rankingsVersion.substring(0, 10)}`
-            : `games_all_${source}`;
-          // Cache for 5 minutes for myboard (will auto-invalidate on version change), 10 minutes for ESPN
-          const ttl = source === 'myboard' ? 5 * 60 * 1000 : 10 * 60 * 1000;
-          setCachedData(storeCacheKey, finalGames, ttl);
-        } catch (err) {
-          console.warn('[useGames] Failed to cache data (localStorage may be disabled):', err);
-          // Continue anyway - caching is optional
+        // Background refresh: fetch fresh data in case cache is stale
+        if (!forceRefresh) {
+          setTimeout(() => {
+            console.log('[useGames] Background refresh starting...');
+            loadGamesFromServer(source, userRankings, true);
+          }, 100);
         }
-        
-        // PREFETCH: Load the other source in background for instant switching later
-        // Only prefetch if we haven't already loaded/cached the other source
-        const otherSource = source === 'espn' ? 'myboard' : 'espn';
-        const otherCacheKey = `games_all_${otherSource}`;
-        try {
-          const otherCached = getCachedData<GamesByDate>(otherCacheKey) || getStaleCachedData<GamesByDate>(otherCacheKey);
-          if (!otherCached || Object.keys(otherCached).length === 0) {
-            console.log(`[useGames] Prefetching ${otherSource} in background for instant switching`);
-            // Delay prefetch to not interfere with primary load
-            setTimeout(async () => {
-              try {
-                const res = await fetch(`/api/games/all?source=${otherSource}`, { credentials: 'include' });
-                if (res.ok) {
-                  const data = await res.json();
-                  if (data.games && Object.keys(data.games).length > 0) {
-                    setCachedData(otherCacheKey, data.games, 10 * 60 * 1000);
-                    console.log(`[useGames] Prefetched ${otherSource}: ${Object.values(data.games).flat().length} games cached`);
-                  }
-                }
-              } catch (prefetchErr) {
-                console.warn(`[useGames] Prefetch of ${otherSource} failed (non-critical):`, prefetchErr);
-              }
-            }, 2000); // Wait 2 seconds before prefetching
-          } else {
-            console.log(`[useGames] ${otherSource} already cached, skipping prefetch`);
-          }
-        } catch (err) {
-          // Prefetch cache check failed, skip prefetch
-        }
+        return;
       }
       
-      console.timeEnd('[useGames] Total load time');
+      // STEP 4: No cache - must fetch from server
+      console.log('[useGames] No cache, fetching from server...');
+      await loadGamesFromServer(source, userRankings, false);
+      
     } catch (err) {
       console.error('Error loading schedule:', err);
       if (alive) {
@@ -574,6 +186,157 @@ export function useGames(options: UseGamesOptions = {}) {
       }
     }
   }, [source]);
+
+  // Helper function to load games from server
+  const loadGamesFromServer = async (
+    currentSource: RankingSource,
+    userRankings: Array<{ name: string; rank: number; isWatchlist: boolean }> | null,
+    isBackground: boolean
+  ) => {
+    try {
+      if (!isBackground) {
+        setLoadingMessage('Loading schedules...');
+      }
+      
+      // Fetch ESPN games (always cached on server, fast)
+      console.time('[useGames] Server fetch');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+      
+      let response: Response;
+      try {
+        // Always fetch ESPN source for games (it's cached on server)
+        response = await fetch(`/api/games/all?source=espn`, {
+          cache: 'no-store',
+          credentials: 'include',
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+      } catch (err) {
+        clearTimeout(timeoutId);
+        if (err instanceof Error && err.name === 'AbortError') {
+          throw new Error('Request timed out. Please try again.');
+        }
+        throw err;
+      }
+      console.timeEnd('[useGames] Server fetch');
+      
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.error(`[useGames] API error ${response.status}:`, errorText);
+        if (!isBackground) {
+          throw new Error(`Failed to load games: ${response.status} ${response.statusText}`);
+        }
+        return;
+      }
+      
+      if (!isBackground) {
+        setLoadingMessage('Processing...');
+      }
+      
+      const data = await response.json();
+      const espnGames = (data.games ?? {}) as GamesByDate;
+      
+      // Cache ESPN games for next time
+      try {
+        setCachedData('games_all_espn', espnGames, 10 * 60 * 1000); // 10 min TTL
+        console.log(`[useGames] Cached ${Object.values(espnGames).flat().length} ESPN games`);
+      } catch { /* ignore */ }
+      
+      // Apply user rankings if needed
+      let finalGames = espnGames;
+      
+      if (currentSource === 'myboard') {
+        // Get rankings to apply
+        let rankingsToApply = userRankings;
+        
+        if (!rankingsToApply) {
+          // Try localStorage first
+          try {
+            const stored = localStorage.getItem('rankingsUpdated');
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              if (parsed.rankings && parsed.rankings.length > 0) {
+                rankingsToApply = parsed.rankings;
+              }
+            }
+          } catch { /* ignore */ }
+          
+          // If still no rankings, fetch from API
+          if (!rankingsToApply) {
+            try {
+              const rankingsResponse = await fetch('/api/my-rankings?source=myboard&excludeWatchlist=false', {
+                cache: 'no-store',
+                credentials: 'include',
+              });
+              if (rankingsResponse.ok) {
+                const rankData = await rankingsResponse.json();
+                if (rankData.prospects && rankData.prospects.length > 0) {
+                  rankingsToApply = rankData.prospects.map((p: any) => ({
+                    name: p.name,
+                    rank: p.rank,
+                    isWatchlist: !!p.isWatchlist,
+                  }));
+                }
+              }
+            } catch (err) {
+              console.warn('[useGames] Failed to fetch rankings:', err);
+            }
+          }
+        }
+        
+        // Apply rankings
+        if (rankingsToApply && rankingsToApply.length > 0) {
+          console.log(`[useGames] Applying ${rankingsToApply.length} rankings to games`);
+          const rankingsMap = new Map<string, { rank: number; isWatchlist: boolean }>();
+          for (const r of rankingsToApply) {
+            const key = (r.name || '').toLowerCase().trim();
+            rankingsMap.set(key, { rank: r.rank, isWatchlist: r.isWatchlist });
+          }
+          
+          finalGames = {};
+          for (const [dateKey, dateGames] of Object.entries(espnGames)) {
+            finalGames[dateKey] = dateGames.map(game => ({
+              ...game,
+              homeProspects: (game.homeProspects || []).map(p => {
+                const updated = rankingsMap.get((p.name || '').toLowerCase().trim());
+                return updated ? { ...p, rank: updated.rank, isWatchlist: updated.isWatchlist } : p;
+              }),
+              awayProspects: (game.awayProspects || []).map(p => {
+                const updated = rankingsMap.get((p.name || '').toLowerCase().trim());
+                return updated ? { ...p, rank: updated.rank, isWatchlist: updated.isWatchlist } : p;
+              }),
+              homeTrackedPlayers: (game.homeTrackedPlayers || []).map(p => {
+                const updated = rankingsMap.get((p.playerName || '').toLowerCase().trim());
+                return updated ? { ...p, rank: updated.rank, type: updated.isWatchlist ? 'watchlist' : 'myBoard' } : p;
+              }),
+              awayTrackedPlayers: (game.awayTrackedPlayers || []).map(p => {
+                const updated = rankingsMap.get((p.playerName || '').toLowerCase().trim());
+                return updated ? { ...p, rank: updated.rank, type: updated.isWatchlist ? 'watchlist' : 'myBoard' } : p;
+              }),
+            }));
+          }
+          console.log('[useGames] ✓ Rankings applied');
+        }
+      }
+      
+      setGames(finalGames);
+      if (!isBackground) {
+        setLoading(false);
+        setLoadingMessage('Loaded successfully ✓');
+        loadedSourceRef.current = currentSource;
+      }
+      
+      console.log('[useGames] ✓ Server fetch complete');
+    } catch (err) {
+      console.error('[useGames] Server fetch error:', err);
+      if (!isBackground) {
+        setError('Failed to load prospect schedules.');
+        setGames({});
+        setLoading(false);
+      }
+    }
+  };
 
   // Update prospect ranks in existing games without reloading
   // Can accept rankings data directly for instant updates, or fetch from API as fallback
