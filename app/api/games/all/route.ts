@@ -24,18 +24,21 @@ export async function GET(request: NextRequest) {
     const source = sourceParam as RankingSource;
     const cacheKey = `all_games_${source}`;
     
-    // Get userId for both sources (needed for watchlist players in both, custom players in 'myboard')
-    const { userId } = await auth();
-    const clerkUserId = userId || undefined;
-    console.log(`[API/All] Auth check - userId: ${clerkUserId ? clerkUserId.substring(0, 10) + '...' : 'NOT LOGGED IN'}, source: ${source}`);
-    
     // Check for force reload parameter (for testing/debugging)
     const forceReload = searchParams.get('forceReload') === 'true';
     
-    // IMPORTANT: If user is logged in, always load fresh data to include watchlist games
-    // Watchlist games are user-specific and can't be cached
-    // Also bypass cache for myboard source to ensure fresh rankings
-    const shouldBypassCache = forceReload || !!clerkUserId || source === 'myboard';
+    // For ESPN source: Use cache aggressively for fast loading
+    // User rankings are now applied client-side, so we don't need user-specific data here
+    // For myboard source: Need user data, bypass cache
+    const shouldBypassCache = forceReload || source === 'myboard';
+    
+    // Only get userId for myboard source (saves auth call overhead for ESPN)
+    let clerkUserId: string | undefined;
+    if (source === 'myboard') {
+      const { userId } = await auth();
+      clerkUserId = userId || undefined;
+      console.log(`[API/All] Auth check - userId: ${clerkUserId ? clerkUserId.substring(0, 10) + '...' : 'NOT LOGGED IN'}, source: ${source}`);
+    }
     
     // Try cache first (only if no user logged in and not forcing reload)
     let cachedData = null;
@@ -80,7 +83,7 @@ export async function GET(request: NextRequest) {
         { games: allGames, source },
         {
           headers: {
-            'Cache-Control': 'public, max-age=60, s-maxage=60, stale-while-revalidate=120',
+            'Cache-Control': 'public, max-age=300, s-maxage=600, stale-while-revalidate=3600',
             'X-Cache-Status': 'HIT',
             'X-Generated-At': new Date().toISOString(),
           },
@@ -212,7 +215,7 @@ export async function GET(request: NextRequest) {
           'X-Generated-At': new Date().toISOString(),
         }
       : {
-          'Cache-Control': 'public, max-age=60, s-maxage=60, stale-while-revalidate=120',
+          'Cache-Control': 'public, max-age=300, s-maxage=600, stale-while-revalidate=3600',
           'X-Cache-Status': 'MISS',
           'X-Generated-At': new Date().toISOString(),
         };

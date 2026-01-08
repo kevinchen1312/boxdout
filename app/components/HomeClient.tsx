@@ -76,7 +76,10 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
     if (typeof window === 'undefined') return initialSource;
     return localStorage.getItem('useMyBoard') === 'true' ? 'myboard' : 'espn';
   });
-  const [rankingsVersion, setRankingsVersion] = useState<string | null>(null);
+  const [rankingsVersion, setRankingsVersion] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem('rankingsVersion');
+  });
   const [needsRefresh, setNeedsRefresh] = useState(false);
   
   // Start loading immediately with localStorage preference - don't wait for auth
@@ -133,132 +136,22 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
     checkCrossDeviceSync();
   }, [isSignedIn]);
 
-  // OPTIMIZATION: Use server-prefetched ESPN games, apply user rankings client-side
-  // This gives instant page load + correct rankings
-  const { games: espnGames, loading, error, loadingMessage, updating, fetchGames, refresh, updateProspectRanks } = useGames({ 
-    source: 'espn', // Always use ESPN for fast loading
+  // Load directly from database with user's rankings - no ESPN flash
+  const { games, loading, error, loadingMessage, updating, fetchGames, refresh, updateProspectRanks } = useGames({ 
+    source: rankingSource, // Use myboard if user has custom rankings, otherwise ESPN
     ready: sourceReady,
-    initialGames: initialGames && Object.keys(initialGames).length > 0 ? initialGames : undefined, // Use server-prefetched data
+    initialGames: undefined, // Don't use server-prefetched - always fetch fresh with correct rankings
     rankingsVersion,
   });
   
-  // State for games with user rankings applied
-  const [games, setGames] = useState<GamesByDate>({});
-  const [userRankingsApplied, setUserRankingsApplied] = useState(false);
-  
-  // When ESPN games load, apply user rankings if in myboard mode
-  useEffect(() => {
-    if (!espnGames || Object.keys(espnGames).length === 0) {
-      setGames({});
-      return;
-    }
-    
-    // If not in myboard mode or not signed in, use ESPN games directly
-    if (rankingSource !== 'myboard' || !isSignedIn) {
-      setGames(espnGames);
-      setUserRankingsApplied(false);
-      return;
-    }
-    
-    // Fetch user rankings and apply them to games
-    const applyUserRankings = async () => {
-      try {
-        // First show ESPN games immediately while we fetch rankings
-        if (!userRankingsApplied) {
-          setGames(espnGames);
-        }
-        
-        // Fetch user's rankings
-        const response = await fetch('/api/my-rankings?source=myboard', {
-          credentials: 'include',
-          cache: 'no-store',
-        });
-        
-        if (!response.ok) {
-          console.warn('[HomeClient] Failed to fetch user rankings, using ESPN');
-          setGames(espnGames);
-          return;
-        }
-        
-        const data = await response.json();
-        const prospects = data.prospects || [];
-        
-        if (prospects.length === 0) {
-          setGames(espnGames);
-          return;
-        }
-        
-        console.log('[HomeClient] Applying', prospects.length, 'user rankings to games');
-        
-        // Build rankings map
-        const rankingsMap = new Map<string, { rank: number; isWatchlist: boolean; type: string }>();
-        for (const p of prospects) {
-          const key = p.name?.toLowerCase().trim();
-          if (key) {
-            rankingsMap.set(key, { 
-              rank: p.rank, 
-              isWatchlist: !!p.isWatchlist,
-              type: p.isWatchlist ? 'watchlist' : 'myBoard'
-            });
-          }
-        }
-        
-        // Apply rankings to all games
-        const updatedGames: GamesByDate = {};
-        for (const [dateKey, dateGames] of Object.entries(espnGames)) {
-          updatedGames[dateKey] = dateGames.map(game => ({
-            ...game,
-            homeProspects: (game.homeProspects || []).map(p => {
-              const updated = rankingsMap.get(p.name?.toLowerCase().trim() || '');
-              if (updated) {
-                return { ...p, rank: updated.rank, isWatchlist: updated.isWatchlist };
-              }
-              return p;
-            }),
-            awayProspects: (game.awayProspects || []).map(p => {
-              const updated = rankingsMap.get(p.name?.toLowerCase().trim() || '');
-              if (updated) {
-                return { ...p, rank: updated.rank, isWatchlist: updated.isWatchlist };
-              }
-              return p;
-            }),
-            homeTrackedPlayers: (game.homeTrackedPlayers || []).map(p => {
-              const updated = rankingsMap.get(p.playerName?.toLowerCase().trim() || '');
-              if (updated) {
-                return { ...p, rank: updated.rank, type: updated.type as 'myBoard' | 'watchlist' };
-              }
-              return p;
-            }),
-            awayTrackedPlayers: (game.awayTrackedPlayers || []).map(p => {
-              const updated = rankingsMap.get(p.playerName?.toLowerCase().trim() || '');
-              if (updated) {
-                return { ...p, rank: updated.rank, type: updated.type as 'myBoard' | 'watchlist' };
-              }
-              return p;
-            }),
-          }));
-        }
-        
-        setGames(updatedGames);
-        setUserRankingsApplied(true);
-        console.log('[HomeClient] ✓ User rankings applied to', Object.keys(updatedGames).length, 'dates');
-      } catch (err) {
-        console.error('[HomeClient] Error applying user rankings:', err);
-        setGames(espnGames);
-      }
-    };
-    
-    applyUserRankings();
-  }, [espnGames, rankingSource, isSignedIn, userRankingsApplied]);
-  
   // Force refresh when cross-device sync detected a mismatch
   useEffect(() => {
-    if (needsRefresh && !loading) {
+    if (needsRefresh && !loading && refresh) {
       console.log('[HomeClient] Triggering refresh due to cross-device sync');
       setNeedsRefresh(false);
-      setUserRankingsApplied(false); // Force re-apply rankings
+      refresh();
     }
-  }, [needsRefresh, loading]);
+  }, [needsRefresh, loading, refresh]);
   
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(() => toLocalMidnight(new Date()));

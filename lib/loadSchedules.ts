@@ -543,7 +543,7 @@ const fetchOverrideLogo = async (teamId: string): Promise<string | undefined> =>
     
     const response = await fetch(url, {
       headers: { 'User-Agent': 'Mozilla/5.0' },
-      cache: 'no-store',
+      next: { revalidate: 3600 }, // Cache for 1 hour
       signal: controller.signal,
     });
     
@@ -767,7 +767,7 @@ export const getTeamDirectory = async (): Promise<Map<string, TeamDirectoryEntry
     headers: {
       'User-Agent': 'Mozilla/5.0',
     },
-    cache: 'no-store',
+    next: { revalidate: 3600 }, // Cache for 1 hour
   });
 
   if (!response.ok) {
@@ -990,7 +990,7 @@ const getRosterForTeam = async (teamId: string): Promise<Map<string, RosterData>
     headers: {
       'User-Agent': 'Mozilla/5.0',
     },
-    cache: 'no-store',
+    next: { revalidate: 3600 }, // Cache for 1 hour
   });
 
   if (!response.ok) {
@@ -2133,7 +2133,7 @@ const fetchScoreboardEvents = async (dateKey: string): Promise<any[]> => {
       headers: {
         'User-Agent': 'Mozilla/5.0',
       },
-      cache: 'no-store',
+      next: { revalidate: 60 }, // Cache for 1 minute (live scores update frequently)
     });
 
     if (!response.ok) {

@@ -226,7 +226,7 @@ export const fetchScheduleFromESPN = async (
     headers: {
       'User-Agent': 'Mozilla/5.0',
     },
-    cache: 'no-store',
+    next: { revalidate: 300 }, // Cache for 5 minutes
   });
   
   if (!response.ok) {

@@ -101,6 +101,44 @@ export function useGames(options: UseGamesOptions = {}) {
             cached = getStaleCachedData<GamesByDate>(cacheKey);
           }
           
+          // For myboard source, also try to find ANY myboard cache (even without version)
+          // This helps on first load when cache might exist from previous session
+          if (!cached && source === 'myboard') {
+            console.log('[useGames] No versioned cache, searching for any myboard cache...');
+            const keys = Object.keys(localStorage);
+            for (const key of keys) {
+              if (key.includes('prospectcal_cache_games_all_myboard')) {
+                try {
+                  const foundCache = getStaleCachedData<GamesByDate>(key.replace('prospectcal_cache_', ''));
+                  if (foundCache && Object.keys(foundCache).length > 5) {
+                    cached = foundCache;
+                    console.log('[useGames] Found myboard cache from previous session, using it');
+                    break;
+                  }
+                } catch { /* ignore */ }
+              }
+            }
+          }
+          
+          // For ESPN source, also try to find ANY ESPN cache (even if key doesn't match exactly)
+          // This helps on first load when cache might exist from previous session
+          if (!cached && source === 'espn') {
+            console.log('[useGames] No exact cache match, searching for any ESPN cache...');
+            const keys = Object.keys(localStorage);
+            for (const key of keys) {
+              if (key.includes('prospectcal_cache_games_all_espn')) {
+                try {
+                  const foundCache = getStaleCachedData<GamesByDate>(key.replace('prospectcal_cache_', ''));
+                  if (foundCache && Object.keys(foundCache).length > 5) {
+                    cached = foundCache;
+                    console.log('[useGames] Found ESPN cache from previous session, using it');
+                    break;
+                  }
+                } catch { /* ignore */ }
+              }
+            }
+          }
+          
           // If no cache found but we have pending rankings, try to find ANY myboard cache
           // We can apply the new rankings to it instead of fetching fresh
           if (!cached && pendingRankingsUpdate && source === 'myboard') {
@@ -223,9 +261,28 @@ export function useGames(options: UseGamesOptions = {}) {
       
       // Phase 1: Load today's games first for quick display
       console.time('[useGames] Today fetch time');
-      const todayResponse = await fetch(`/api/games/today?source=${source}`, {
-        cache: 'no-store',
-      });
+      const todayController = new AbortController();
+      const todayTimeoutId = setTimeout(() => {
+        todayController.abort();
+      }, 15000); // 15 second timeout for today's games
+      
+      let todayResponse: Response;
+      try {
+        todayResponse = await fetch(`/api/games/today?source=${source}`, {
+          cache: 'no-store',
+          credentials: 'include', // Include auth for myboard source
+          signal: todayController.signal,
+        });
+        clearTimeout(todayTimeoutId);
+      } catch (err) {
+        clearTimeout(todayTimeoutId);
+        if (err instanceof Error && err.name === 'AbortError') {
+          console.warn('[useGames] Today fetch timed out, continuing with full fetch');
+          todayResponse = { ok: false } as Response;
+        } else {
+          throw err;
+        }
+      }
       console.timeEnd('[useGames] Today fetch time');
       
       if (todayResponse.ok) {
@@ -247,10 +304,29 @@ export function useGames(options: UseGamesOptions = {}) {
       // Check URL for forceReload parameter to bypass cache
       const urlParams = new URLSearchParams(window.location.search);
       const forceReload = urlParams.get('forceReload') === 'true';
-      const response = await fetch(`/api/games/all?source=${source}${forceReload || forceRefresh ? '&forceReload=true' : ''}`, {
-        cache: 'no-store', // Force fresh fetch
-        credentials: 'include', // CRITICAL: Include auth cookies for user-specific rankings
-      });
+      
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        controller.abort();
+      }, 30000); // 30 second timeout
+      
+      let response: Response;
+      try {
+        response = await fetch(`/api/games/all?source=${source}${forceReload || forceRefresh ? '&forceReload=true' : ''}`, {
+          cache: 'no-store', // Force fresh fetch
+          credentials: 'include', // CRITICAL: Include auth cookies for user-specific rankings
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+      } catch (err) {
+        clearTimeout(timeoutId);
+        if (err instanceof Error && err.name === 'AbortError') {
+          console.error('[useGames] Request timed out after 30 seconds');
+          throw new Error('Request timed out. Please try again.');
+        }
+        throw err;
+      }
       console.timeEnd('[useGames] All games fetch time');
       
       if (!response.ok) {
