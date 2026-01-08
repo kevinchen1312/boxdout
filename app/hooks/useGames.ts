@@ -67,9 +67,10 @@ export function useGames(options: UseGamesOptions = {}) {
       }
       
       // Try to get from cache first (with error handling for browsers that block localStorage)
-      // Show cached data immediately even if stale, then refresh in background
+      // IMPORTANT: For 'myboard' source, NEVER use cache - always fetch fresh to ensure rankings sync across devices
+      // Caching myboard data causes stale rankings to show on different devices
       let cached: GamesByDate | null = null;
-      if (!forceRefresh) {
+      if (!forceRefresh && source !== 'myboard') {
         try {
           const cacheKey = `games_all_${source}`;
           // First try fresh cache
@@ -81,6 +82,8 @@ export function useGames(options: UseGamesOptions = {}) {
         } catch (err) {
           console.warn('[useGames] Cache read failed (localStorage may be disabled):', err);
         }
+      } else if (source === 'myboard') {
+        console.log('[useGames] Skipping cache for myboard source - always fetch fresh for correct rankings');
       }
       
       // If we have cached data (fresh or stale), show it immediately
@@ -276,12 +279,15 @@ export function useGames(options: UseGamesOptions = {}) {
         
         // Store in cache for next time (with error handling)
         // Cache for 10 minutes - balances freshness with performance
-        try {
-          const cacheKey = `games_all_${source}`;
-          setCachedData(cacheKey, finalGames, 10 * 60 * 1000); // Cache for 10 minutes (with updated ranks)
-        } catch (err) {
-          console.warn('[useGames] Failed to cache data (localStorage may be disabled):', err);
-          // Continue anyway - caching is optional
+        // IMPORTANT: Don't cache myboard - rankings need to always be fresh across devices
+        if (source !== 'myboard') {
+          try {
+            const cacheKey = `games_all_${source}`;
+            setCachedData(cacheKey, finalGames, 10 * 60 * 1000); // Cache for 10 minutes (with updated ranks)
+          } catch (err) {
+            console.warn('[useGames] Failed to cache data (localStorage may be disabled):', err);
+            // Continue anyway - caching is optional
+          }
         }
         
         // PREFETCH: Load the other source in background for instant switching later
@@ -709,10 +715,13 @@ export function useGames(options: UseGamesOptions = {}) {
             // Update state with the rank-updated games AND update cache
             setGames(updatedCached);
             // Also update the cache so background refresh uses updated rankings
-            try {
-              setCachedData(cacheKey, updatedCached, 10 * 60 * 1000);
-            } catch (cacheErr) {
-              console.warn('[useGames] Failed to update cache with new rankings:', cacheErr);
+            // IMPORTANT: Don't cache myboard - rankings need to always be fresh across devices
+            if (source !== 'myboard') {
+              try {
+                setCachedData(cacheKey, updatedCached, 10 * 60 * 1000);
+              } catch (cacheErr) {
+                console.warn('[useGames] Failed to update cache with new rankings:', cacheErr);
+              }
             }
             console.log(`[useGames] Rankings applied to cached games - NO background refresh needed`);
             // CRITICAL: Don't do a background refresh when we have pending rankings
@@ -1323,15 +1332,18 @@ export function useGames(options: UseGamesOptions = {}) {
       });
       
       // Update cache silently (don't trigger loading state)
-      try {
-        const cacheKey = `games_all_${source}`;
-        // Get the merged games from state and cache them
-        setGames((currentGames) => {
-          setCachedData(cacheKey, currentGames, 5 * 60 * 1000); // 5 min cache
-          return currentGames; // Return unchanged to avoid double update
-        });
-      } catch (err) {
-        // Ignore cache errors
+      // IMPORTANT: Don't cache myboard - rankings need to always be fresh across devices
+      if (source !== 'myboard') {
+        try {
+          const cacheKey = `games_all_${source}`;
+          // Get the merged games from state and cache them
+          setGames((currentGames) => {
+            setCachedData(cacheKey, currentGames, 5 * 60 * 1000); // 5 min cache
+            return currentGames; // Return unchanged to avoid double update
+          });
+        } catch (err) {
+          // Ignore cache errors
+        }
       }
     } catch (err) {
       console.error('[useGames] Error adding watchlist games:', err);

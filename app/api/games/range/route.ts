@@ -47,7 +47,15 @@ export async function GET(request: NextRequest) {
     
     const games = await getGamesBetween(format(startDate, 'yyyy-MM-dd'), format(endDate, 'yyyy-MM-dd'), source, clerkUserId);
 
-    return NextResponse.json({ games, source });
+    // For myboard (user-specific data), prevent caching
+    const headers: HeadersInit = {};
+    if (source === 'myboard') {
+      headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, proxy-revalidate';
+      headers['Pragma'] = 'no-cache';
+      headers['Expires'] = '0';
+    }
+
+    return NextResponse.json({ games, source }, { headers });
   } catch (error) {
     console.error('Error fetching schedule range:', error);
     return NextResponse.json(
