@@ -67,10 +67,27 @@ export function useGames(options: UseGamesOptions = {}) {
       }
       
       // Try to get from cache first (with error handling for browsers that block localStorage)
-      // For 'myboard' source, use a version-aware cache key that includes the rankings version
-      // This ensures cache is automatically invalidated when rankings change
       let cached: GamesByDate | null = null;
       const rankingsVersion = typeof window !== 'undefined' ? localStorage.getItem('rankingsVersion') : null;
+      
+      // Check if there's a pending rankings update - if so, we can use OLD cache + apply new rankings
+      let pendingRankingsUpdate: { rankings: Array<{ name: string; team: string; rank: number; isWatchlist?: boolean }> } | null = null;
+      if (source === 'myboard' && typeof window !== 'undefined') {
+        try {
+          const stored = localStorage.getItem('rankingsUpdated');
+          if (stored) {
+            const data = JSON.parse(stored);
+            // Check if this is a recent update (within 30 seconds)
+            if (data.timestamp && (Date.now() - data.timestamp) < 30000 && data.rankings) {
+              pendingRankingsUpdate = data;
+              console.log('[useGames] Found pending rankings update, will apply to cached games');
+            }
+          }
+        } catch (err) {
+          // Ignore
+        }
+      }
+      
       // For myboard, include rankings version in cache key so it auto-invalidates when rankings change
       const cacheKey = source === 'myboard' && rankingsVersion 
         ? `games_all_${source}_v${rankingsVersion.substring(0, 10)}` // Use first 10 chars of version timestamp
@@ -78,12 +95,32 @@ export function useGames(options: UseGamesOptions = {}) {
       
       if (!forceRefresh) {
         try {
-          // First try fresh cache
+          // First try current version cache
           cached = getCachedData<GamesByDate>(cacheKey);
-          // If no fresh cache, try stale cache (for immediate display)
           if (!cached) {
             cached = getStaleCachedData<GamesByDate>(cacheKey);
           }
+          
+          // If no cache found but we have pending rankings, try to find ANY myboard cache
+          // We can apply the new rankings to it instead of fetching fresh
+          if (!cached && pendingRankingsUpdate && source === 'myboard') {
+            console.log('[useGames] No versioned cache, searching for any myboard cache to update...');
+            // Try old cache keys (iterate localStorage)
+            const keys = Object.keys(localStorage);
+            for (const key of keys) {
+              if (key.includes('games_all_myboard')) {
+                try {
+                  const oldCached = getStaleCachedData<GamesByDate>(key.replace('prospectcal_cache_', ''));
+                  if (oldCached && Object.keys(oldCached).length > 5) {
+                    cached = oldCached;
+                    console.log('[useGames] Found old myboard cache, will apply new rankings');
+                    break;
+                  }
+                } catch { /* ignore */ }
+              }
+            }
+          }
+          
           if (cached && source === 'myboard') {
             console.log(`[useGames] Using cached myboard data (version: ${rankingsVersion?.substring(0, 10)})`);
           }
@@ -115,7 +152,62 @@ export function useGames(options: UseGamesOptions = {}) {
         } else {
           // Cache looks complete - show it and DON'T do background revalidation
           // Background revalidation causes full reload which is what we're trying to avoid
-          setGames(cached);
+          
+          // If we have pending rankings update, apply them to the cached games BEFORE showing
+          let gamesToShow = cached;
+          if (pendingRankingsUpdate && pendingRankingsUpdate.rankings) {
+            console.log('[useGames] Applying pending rankings update to cached games...');
+            const rankings = pendingRankingsUpdate.rankings;
+            const rankingsMap = new Map<string, { rank: number; isWatchlist: boolean }>();
+            for (const r of rankings) {
+              const key = r.name.toLowerCase().trim();
+              rankingsMap.set(key, { rank: r.rank, isWatchlist: !!r.isWatchlist });
+            }
+            
+            // Update ranks in all games
+            gamesToShow = {};
+            for (const [dateKey, dateGames] of Object.entries(cached)) {
+              gamesToShow[dateKey] = dateGames.map(game => ({
+                ...game,
+                homeProspects: (game.homeProspects || []).map(p => {
+                  const updated = rankingsMap.get(p.name?.toLowerCase().trim() || '');
+                  if (updated) {
+                    return { ...p, rank: updated.rank, isWatchlist: updated.isWatchlist };
+                  }
+                  return p;
+                }),
+                awayProspects: (game.awayProspects || []).map(p => {
+                  const updated = rankingsMap.get(p.name?.toLowerCase().trim() || '');
+                  if (updated) {
+                    return { ...p, rank: updated.rank, isWatchlist: updated.isWatchlist };
+                  }
+                  return p;
+                }),
+                homeTrackedPlayers: (game.homeTrackedPlayers || []).map(p => {
+                  const updated = rankingsMap.get(p.playerName?.toLowerCase().trim() || '');
+                  if (updated) {
+                    return { ...p, rank: updated.rank, type: updated.isWatchlist ? 'watchlist' : 'myBoard' };
+                  }
+                  return p;
+                }),
+                awayTrackedPlayers: (game.awayTrackedPlayers || []).map(p => {
+                  const updated = rankingsMap.get(p.playerName?.toLowerCase().trim() || '');
+                  if (updated) {
+                    return { ...p, rank: updated.rank, type: updated.isWatchlist ? 'watchlist' : 'myBoard' };
+                  }
+                  return p;
+                }),
+              }));
+            }
+            console.log('[useGames] ✓ Rankings applied to cached games');
+            
+            // Clear the pending update so we don't re-apply it
+            try {
+              localStorage.removeItem('rankingsUpdated');
+            } catch { /* ignore */ }
+          }
+          
+          setGames(gamesToShow);
           setLoading(false); // Don't show loading spinner - we have data to show
           loadedSourceRef.current = source;
           console.timeEnd('[useGames] Total load time');
