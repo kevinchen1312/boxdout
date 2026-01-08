@@ -77,6 +77,7 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
     return localStorage.getItem('useMyBoard') === 'true' ? 'myboard' : 'espn';
   });
   const [rankingsVersion, setRankingsVersion] = useState<string | null>(null);
+  const [needsRefresh, setNeedsRefresh] = useState(false);
   
   // Start loading immediately with localStorage preference - don't wait for auth
   const [sourceReady, setSourceReady] = useState(true);
@@ -120,6 +121,7 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
               // Update state to trigger refetch with correct rankings
               setRankingsVersion(serverVersion);
               setRankingSource('myboard');
+              setNeedsRefresh(true); // Flag to force refresh after games load
             }
           }
         }
@@ -138,6 +140,15 @@ export default function HomeClient({ initialGames, initialSource }: HomeClientPr
     initialGames: undefined,
     rankingsVersion,
   });
+  
+  // Force refresh when cross-device sync detected a mismatch
+  useEffect(() => {
+    if (needsRefresh && !loading && refresh) {
+      console.log('[HomeClient] Triggering refresh due to cross-device sync');
+      setNeedsRefresh(false);
+      refresh(); // Force refresh
+    }
+  }, [needsRefresh, loading, refresh]);
   
   const [dateRange, setDateRange] = useState<{ start: string; end: string } | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date>(() => toLocalMidnight(new Date()));
